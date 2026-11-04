@@ -126,6 +126,17 @@ describe.each(levels)('关卡 $name', ({ grid: rows }) => {
     expect(isSolved(grid, traceLasers(grid))).toBe(false);
   });
 
+  it('四周都是墙（画面会裁掉外圈墙的大部分）', () => {
+    const lastY = grid.length - 1;
+    const isBorderWall = grid.every((row, y) =>
+      row.every((cell, x) => {
+        const onBorder = y === 0 || y === lastY || x === 0 || x === row.length - 1;
+        return !onBorder || cell.kind === 'wall';
+      }),
+    );
+    expect(isBorderWall).toBe(true);
+  });
+
   it('旋转镜子能过关', () => {
     const solutions = allMirrorStates(grid).filter((state) => isSolved(state, traceLasers(state)));
     expect(solutions.length).toBeGreaterThan(0);

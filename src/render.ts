@@ -1,121 +1,481 @@
-import type { Cell, Direction, Grid, MirrorType, Position, TraceResult } from './laser';
+import type { MeasuredSegment } from './beam';
+import type { Direction, Grid, Position } from './laser';
 
-export const CELL_SIZE = 16;
+/** 外圈的墙只露出这么多，把画面留给台面。单位是格子。 */
+const VISIBLE_BORDER = 0.38;
+const BORDER_CROP = 1 - VISIBLE_BORDER;
 
-const COLORS = {
-  floor: '#1c2a4a',
-  floorSpeck: '#243559',
-  wall: '#5b6c8f',
-  wallTop: '#8496b5',
-  wallShadow: '#3d4c6d',
-  mirrorPad: '#2f4270',
-  mirror: '#d9f4ff',
-  mirrorEdge: '#6fb6d9',
-  emitter: '#e8e2d0',
-  emitterShade: '#9a9483',
-  targetOff: '#7a5a1e',
-  targetRing: '#c9962e',
-  targetLit: '#ffe46b',
-  laserGlow: '#ff2a6d',
-  laserCore: '#ffd9e6',
-} as const;
+type Rgb = readonly [number, number, number];
 
-export function renderGame(ctx: CanvasRenderingContext2D, grid: Grid, trace: TraceResult): void {
-  const lit = new Set(trace.litTargets.map(({ x, y }) => `${x},${y}`));
+const BEAM: Rgb = [255, 38, 96];
+const BEAM_CORE: Rgb = [255, 238, 242];
+const CRYSTAL: Rgb = [70, 240, 255];
+const SPARK: Rgb = [255, 190, 150];
 
-  grid.forEach((row, y) => {
-    row.forEach((cell, x) => {
-      drawFloor(ctx, x, y);
-      drawCell(ctx, cell, x, y, lit.has(`${x},${y}`));
-    });
-  });
+export type Particle = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
+  life: number;
+  size: number;
+  color: Rgb;
+};
 
-  drawLasers(ctx, trace);
+export type Ring = { x: number; y: number; age: number; life: number };
 
-  // 发射器和镜子画在光上面，光看起来是从它们身上出来的
-  grid.forEach((row, y) => {
-    row.forEach((cell, x) => {
-      const origin = originOf(x, y);
-      if (cell.kind === 'emitter') drawEmitter(ctx, origin, cell.direction);
-      if (cell.kind === 'mirror') drawMirror(ctx, origin, cell.mirror);
-    });
-  });
+export const PARTICLE_COLORS = { beam: BEAM, spark: SPARK, crystal: CRYSTAL, white: BEAM_CORE };
+
+export type Frame = {
+  grid: Grid;
+  beam: readonly MeasuredSegment[];
+  revealed: number;
+  time: number;
+  mirrorAngles: ReadonlyMap<string, number>;
+  charges: ReadonlyMap<string, number>;
+  focus: Position | null;
+  flash: number;
+  won: boolean;
+  particles: readonly Particle[];
+  rings: readonly Ring[];
+  still: boolean;
+};
+
+export const cellKey = (x: number, y: number): string => `${x},${y}`;
+
+const rgba = ([r, g, b]: Rgb, alpha: number): string => `rgba(${r},${g},${b},${alpha})`;
+
+function mix(a: Rgb, b: Rgb, t: number): Rgb {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
 }
 
-function originOf(x: number, y: number): Position {
-  return { x: x * CELL_SIZE, y: y * CELL_SIZE };
+function context(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('浏览器不支持 Canvas 2D');
+  return ctx;
 }
 
-function rect(ctx: CanvasRenderingContext2D, color: string, x: number, y: number, w: number, h: number): void {
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
+function glow(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: Rgb, alpha: number): void {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  gradient.addColorStop(0, rgba(color, alpha));
+  gradient.addColorStop(0.35, rgba(color, alpha * 0.35));
+  gradient.addColorStop(1, rgba(color, 0));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
 }
 
-function drawFloor(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  const origin = originOf(x, y);
-  rect(ctx, COLORS.floor, origin.x, origin.y, CELL_SIZE, CELL_SIZE);
-  rect(ctx, COLORS.floorSpeck, origin.x, origin.y, 1, 1);
-}
+function drawTable(ctx: CanvasRenderingContext2D, columns: number, rows: number): void {
+  const table = ctx.createLinearGradient(0, 0, columns, rows);
+  table.addColorStop(0, '#2a2460');
+  table.addColorStop(0.55, '#1c1b4e');
+  table.addColorStop(1, '#14204f');
+  ctx.fillStyle = table;
+  ctx.fillRect(0, 0, columns, rows);
 
-function drawCell(ctx: CanvasRenderingContext2D, cell: Cell, x: number, y: number, isLit: boolean): void {
-  const origin = originOf(x, y);
-  if (cell.kind === 'wall') drawWall(ctx, origin);
-  if (cell.kind === 'target') drawTarget(ctx, origin, isLit);
-  if (cell.kind === 'mirror') rect(ctx, COLORS.mirrorPad, origin.x + 1, origin.y + 1, 14, 14);
-}
-
-function drawWall(ctx: CanvasRenderingContext2D, { x, y }: Position): void {
-  rect(ctx, COLORS.wall, x, y, CELL_SIZE, CELL_SIZE);
-  rect(ctx, COLORS.wallTop, x, y, CELL_SIZE, 2);
-  rect(ctx, COLORS.wallShadow, x, y + 14, CELL_SIZE, 2);
-}
-
-function drawTarget(ctx: CanvasRenderingContext2D, { x, y }: Position, isLit: boolean): void {
-  rect(ctx, isLit ? COLORS.targetLit : COLORS.targetRing, x + 5, y + 2, 6, 12);
-  rect(ctx, isLit ? COLORS.targetLit : COLORS.targetRing, x + 2, y + 5, 12, 6);
-  rect(ctx, isLit ? '#ffffff' : COLORS.targetOff, x + 5, y + 5, 6, 6);
-}
-
-function drawLasers(ctx: CanvasRenderingContext2D, { segments }: TraceResult): void {
-  const scale = CELL_SIZE;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (const { from, to } of segments) {
-    const left = Math.min(from.x, to.x) * scale;
-    const top = Math.min(from.y, to.y) * scale;
-    const width = Math.abs(to.x - from.x) * scale;
-    const height = Math.abs(to.y - from.y) * scale;
-    const isHorizontal = height === 0;
-
-    ctx.globalAlpha = 0.45;
-    if (isHorizontal) rect(ctx, COLORS.laserGlow, left, top - 2, width, 4);
-    else rect(ctx, COLORS.laserGlow, left - 2, top, 4, height);
-
-    ctx.globalAlpha = 1;
-    if (isHorizontal) rect(ctx, COLORS.laserCore, left, top - 1, width, 2);
-    else rect(ctx, COLORS.laserCore, left - 1, top, 2, height);
+  for (let y = 0; y <= rows * 2; y += 1) {
+    for (let x = 0; x <= columns * 2; x += 1) {
+      const isCorner = x % 2 === 0 && y % 2 === 0;
+      const radius = isCorner ? 0.045 : 0.022;
+      ctx.fillStyle = 'rgba(140, 140, 235, 0.3)';
+      ctx.beginPath();
+      ctx.arc(x / 2, y / 2 + 0.012, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0b0c2c';
+      ctx.beginPath();
+      ctx.arc(x / 2, y / 2, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
+
+  const vignette = ctx.createRadialGradient(
+    columns / 2, rows / 2, Math.min(columns, rows) * 0.2,
+    columns / 2, rows / 2, Math.max(columns, rows) * 0.62,
+  );
+  vignette.addColorStop(0, 'rgba(6, 6, 30, 0)');
+  vignette.addColorStop(1, 'rgba(6, 6, 30, 0.6)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, columns, rows);
+}
+
+function drawWalls(ctx: CanvasRenderingContext2D, grid: Grid, cellPixels: number): void {
+  const isWall = (x: number, y: number) => grid[y]?.[x]?.kind === 'wall';
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(2, 2, 20, 0.8)';
+  ctx.shadowBlur = cellPixels * 0.3;
+  ctx.shadowOffsetY = cellPixels * 0.1;
+  ctx.fillStyle = '#23264f';
+  grid.forEach((row, y) => row.forEach((cell, x) => {
+    if (cell.kind === 'wall') ctx.fillRect(x, y, 1, 1);
+  }));
+  ctx.restore();
+
+  grid.forEach((row, y) => row.forEach((cell, x) => {
+    if (cell.kind !== 'wall') return;
+
+    const metal = ctx.createLinearGradient(x, y, x + 1, y + 1);
+    metal.addColorStop(0, '#4b5088');
+    metal.addColorStop(1, '#2b2e5e');
+    ctx.fillStyle = metal;
+    ctx.fillRect(x, y, 1, 1);
+
+    ctx.fillStyle = 'rgba(180, 190, 255, 0.28)';
+    for (const [sx, sy] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]] as const) {
+      ctx.beginPath();
+      ctx.arc(x + sx, y + sy, 0.022, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(125, 232, 255, 0.6)';
+    ctx.lineWidth = 0.022;
+    ctx.beginPath();
+    if (!isWall(x, y - 1) && y > 0) { ctx.moveTo(x, y); ctx.lineTo(x + 1, y); }
+    if (!isWall(x, y + 1) && y < grid.length - 1) { ctx.moveTo(x, y + 1); ctx.lineTo(x + 1, y + 1); }
+    if (!isWall(x - 1, y) && x > 0) { ctx.moveTo(x, y); ctx.lineTo(x, y + 1); }
+    if (!isWall(x + 1, y) && x < row.length - 1) { ctx.moveTo(x + 1, y); ctx.lineTo(x + 1, y + 1); }
+    ctx.stroke();
+  }));
+}
+
+function drawMirror(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, focused: boolean): void {
+  const cx = x + 0.5;
+  const cy = y + 0.5;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ctx.fillStyle = 'rgba(2, 2, 20, 0.5)';
+  ctx.beginPath();
+  ctx.arc(0, 0.05, 0.43, 0, Math.PI * 2);
+  ctx.fill();
+
+  const brass = ctx.createLinearGradient(-0.4, -0.4, 0.4, 0.4);
+  brass.addColorStop(0, '#ffd98a');
+  brass.addColorStop(0.5, '#c08a3a');
+  brass.addColorStop(1, '#7a5220');
+  ctx.fillStyle = brass;
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.41, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#12133a';
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#4a3214';
+  for (let i = 0; i < 4; i += 1) {
+    const a = (i * Math.PI) / 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * 0.38, Math.sin(a) * 0.38, 0.014, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.rotate(angle);
+  const glass = ctx.createLinearGradient(0, -0.07, 0, 0.07);
+  glass.addColorStop(0, '#ffffff');
+  glass.addColorStop(0.45, '#b5ecff');
+  glass.addColorStop(1, '#3f86b5');
+  ctx.fillStyle = glass;
+  ctx.fillRect(-0.37, -0.07, 0.74, 0.14);
+  ctx.fillStyle = '#e9b860';
+  ctx.fillRect(-0.41, -0.09, 0.07, 0.18);
+  ctx.fillRect(0.34, -0.09, 0.07, 0.18);
+  ctx.restore();
+
+  if (focused) {
+    ctx.strokeStyle = rgba(CRYSTAL, 0.95);
+    ctx.lineWidth = 0.035;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 0.46, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, charge: number): void {
+  const cx = x + 0.5;
+  const cy = y + 0.5;
+  const radius = 0.3;
+
+  ctx.fillStyle = '#10113a';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.39, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#5a5f99';
+  ctx.lineWidth = 0.03;
+  ctx.stroke();
+
+  const dimShades: readonly Rgb[] = [
+    [62, 120, 150], [44, 92, 124], [30, 68, 100], [24, 54, 84], [34, 76, 108], [50, 104, 136],
+  ];
+  const litShades: readonly Rgb[] = [
+    [255, 255, 255], [190, 252, 255], [110, 240, 255], [70, 215, 245], [130, 244, 255], [215, 254, 255],
+  ];
+
+  for (let i = 0; i < 6; i += 1) {
+    const a1 = -Math.PI / 2 + (i * Math.PI) / 3;
+    const a2 = a1 + Math.PI / 3;
+    const color = mix(dimShades[i] ?? [0, 0, 0], litShades[i] ?? [0, 0, 0], charge);
+    ctx.fillStyle = rgba(color, 1);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a1) * radius, cy + Math.sin(a1) * radius);
+    ctx.lineTo(cx + Math.cos(a2) * radius, cy + Math.sin(a2) * radius);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+const EMITTER_ANGLES: Record<Direction, number> = {
+  right: 0,
+  down: Math.PI / 2,
+  left: Math.PI,
+  up: -Math.PI / 2,
+};
+
+function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direction: Direction): void {
+  ctx.save();
+  ctx.translate(x + 0.5, y + 0.5);
+  ctx.rotate(EMITTER_ANGLES[direction]);
+
+  const shadow = ctx.createRadialGradient(0, 0.06, 0.15, 0, 0.06, 0.62);
+  shadow.addColorStop(0, 'rgba(2, 2, 20, 0.75)');
+  shadow.addColorStop(1, 'rgba(2, 2, 20, 0)');
+  ctx.fillStyle = shadow;
+  ctx.fillRect(-0.7, -0.6, 1.4, 1.3);
+
+  const body = ctx.createLinearGradient(0, -0.3, 0, 0.3);
+  body.addColorStop(0, '#d6dcf5');
+  body.addColorStop(0.3, '#8087ba');
+  body.addColorStop(1, '#2c2f60');
+  ctx.fillStyle = body;
+  ctx.fillRect(-0.42, -0.3, 0.68, 0.6);
+
+  ctx.fillStyle = 'rgba(10, 10, 40, 0.55)';
+  for (const stripe of [-0.32, -0.22, -0.12]) ctx.fillRect(stripe, -0.3, 0.035, 0.6);
+
+  const barrel = ctx.createLinearGradient(0, -0.15, 0, 0.15);
+  barrel.addColorStop(0, '#ffe2a0');
+  barrel.addColorStop(0.5, '#c08a3a');
+  barrel.addColorStop(1, '#6e481c');
+  ctx.fillStyle = barrel;
+  ctx.fillRect(0.26, -0.15, 0.2, 0.3);
   ctx.restore();
 }
 
-function drawEmitter(ctx: CanvasRenderingContext2D, { x, y }: Position, direction: Direction): void {
-  rect(ctx, COLORS.emitterShade, x + 2, y + 2, 12, 12);
-  rect(ctx, COLORS.emitter, x + 3, y + 3, 10, 10);
-  const nozzle: Record<Direction, [number, number, number, number]> = {
-    up: [6, 0, 4, 4],
-    right: [12, 6, 4, 4],
-    down: [6, 12, 4, 4],
-    left: [0, 6, 4, 4],
+function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
+  const { beam, revealed, time, flash, still } = frame;
+  const flicker = still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13);
+  const boost = 1 + flash * 0.8;
+
+  const stroke = (style: string, width: number, dash?: readonly [number, number]) => {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.setLineDash(dash ? [...dash] : []);
+    ctx.lineDashOffset = dash ? -time * 7 : 0;
+    ctx.lineCap = dash ? 'butt' : 'round';
+    ctx.beginPath();
+    for (const { from, to, start, length } of beam) {
+      const shown = Math.min(1, Math.max(0, (revealed - start) / (length || 1)));
+      if (shown <= 0) continue;
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(from.x + (to.x - from.x) * shown, from.y + (to.y - from.y) * shown);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
   };
-  const [nx, ny, nw, nh] = nozzle[direction];
-  rect(ctx, COLORS.emitterShade, x + nx, y + ny, nw, nh);
-  rect(ctx, COLORS.laserGlow, x + 6, y + 6, 4, 4);
+
+  // 一层层叠很淡的宽线，光晕才会慢慢散开，不会有硬边
+  for (let width = 1.3; width > 0.12; width *= 0.8) {
+    stroke(rgba(BEAM, 0.022 * flicker), width * boost);
+  }
+  stroke(rgba(BEAM, 0.75 * flicker), 0.11 * boost);
+  stroke(rgba(BEAM_CORE, 1), 0.06 * boost);
+  if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
+
+  for (const { to, start, length } of beam) {
+    if (revealed < start) continue;
+    const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 9 + to.x * 3 + to.y * 5);
+    if (revealed >= start + length) {
+      glow(ctx, to.x, to.y, 0.42 * pulse * boost, BEAM, 0.6);
+      glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, 1);
+    }
+  }
 }
 
-function drawMirror(ctx: CanvasRenderingContext2D, { x, y }: Position, mirror: MirrorType): void {
-  for (let i = 2; i <= 13; i += 1) {
-    const rowY = mirror === '/' ? 15 - i : i;
-    rect(ctx, COLORS.mirrorEdge, x + i - 1, y + rowY, 3, 1);
-    rect(ctx, COLORS.mirror, x + i, y + rowY, 1, 1);
+function drawCrystalLight(ctx: CanvasRenderingContext2D, frame: Frame): void {
+  const { grid, charges, time, still } = frame;
+
+  grid.forEach((row, y) => row.forEach((cell, x) => {
+    if (cell.kind !== 'target') return;
+    const charge = charges.get(cellKey(x, y)) ?? 0;
+    const cx = x + 0.5;
+    const cy = y + 0.5;
+    const breathe = still ? 0.5 : 0.5 + 0.5 * Math.sin(time * 2.2);
+
+    glow(ctx, cx, cy, 0.62, CRYSTAL, 0.1 + 0.08 * breathe);
+    if (charge <= 0.01) return;
+
+    const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 6 + x);
+    glow(ctx, cx, cy, 1.25 * pulse, CRYSTAL, 0.32 * charge);
+    glow(ctx, cx, cy, 0.14, BEAM_CORE, 0.8 * charge);
+
+    ctx.strokeStyle = rgba(CRYSTAL, 0.95 * charge);
+    ctx.lineWidth = 0.035;
+    ctx.lineCap = 'round';
+    const spin = still ? 0 : time * 1.6;
+    for (let i = 0; i < 3; i += 1) {
+      const start = spin + (i * Math.PI * 2) / 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 0.46, start, start + 1.3);
+      ctx.stroke();
+    }
+  }));
+}
+
+function drawEffects(ctx: CanvasRenderingContext2D, frame: Frame): void {
+  for (const { x, y, vx, vy, age, life, size, color } of frame.particles) {
+    const fade = 1 - age / life;
+    ctx.strokeStyle = rgba(color, fade);
+    ctx.lineWidth = size;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - vx * 0.035, y - vy * 0.035);
+    ctx.stroke();
   }
+
+  for (const { x, y, age, life } of frame.rings) {
+    const progress = age / life;
+    ctx.strokeStyle = rgba(CRYSTAL, (1 - progress) * 0.9);
+    ctx.lineWidth = 0.14 * (1 - progress) + 0.01;
+    ctx.beginPath();
+    ctx.arc(x, y, 0.3 + progress * 4.2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (frame.won) {
+    const rows = frame.grid.length;
+    const columns = frame.grid[0]?.length ?? 0;
+    const pulse = frame.still ? 0.7 : 0.55 + 0.25 * Math.sin(frame.time * 3);
+    ctx.strokeStyle = rgba(CRYSTAL, Math.min(1, pulse + frame.flash));
+    ctx.lineWidth = 0.05;
+    ctx.strokeRect(1, 1, columns - 2, rows - 2);
+  }
+}
+
+export type Renderer = {
+  /** cssWidth 是棋盘在页面上的宽度，单位是 CSS 像素。 */
+  resize(cssWidth: number, pixelRatio: number): void;
+  draw(frame: Frame): void;
+  /** 把鼠标在画布上的相对位置（0 到 1）换算成格子。 */
+  cellAt(relativeX: number, relativeY: number): Position;
+  aspectRatio: number;
+};
+
+export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer {
+  const rows = walls.length;
+  const columns = walls[0]?.length ?? 0;
+  const viewWidth = columns - BORDER_CROP * 2;
+  const viewHeight = rows - BORDER_CROP * 2;
+
+  const main = context(canvas);
+  const background = document.createElement('canvas');
+  const emission = document.createElement('canvas');
+  const emissionCtx = context(emission);
+  const bloomNear = document.createElement('canvas');
+  const bloomNearCtx = context(bloomNear);
+  const bloomFar = document.createElement('canvas');
+  const bloomFarCtx = context(bloomFar);
+
+  let cellPixels = 1;
+
+  const useCellUnits = (ctx: CanvasRenderingContext2D) => {
+    ctx.setTransform(cellPixels, 0, 0, cellPixels, -BORDER_CROP * cellPixels, -BORDER_CROP * cellPixels);
+  };
+
+  return {
+    aspectRatio: viewWidth / viewHeight,
+
+    cellAt(relativeX, relativeY) {
+      return {
+        x: Math.floor(relativeX * viewWidth + BORDER_CROP),
+        y: Math.floor(relativeY * viewHeight + BORDER_CROP),
+      };
+    },
+
+    resize(cssWidth, pixelRatio) {
+      const width = Math.round(cssWidth * pixelRatio);
+      const height = Math.round(width / (viewWidth / viewHeight));
+      cellPixels = width / viewWidth;
+
+      for (const layer of [canvas, background, emission]) {
+        layer.width = width;
+        layer.height = height;
+      }
+      bloomNear.width = Math.ceil(width / 4);
+      bloomNear.height = Math.ceil(height / 4);
+      bloomFar.width = Math.ceil(width / 14);
+      bloomFar.height = Math.ceil(height / 14);
+
+      const backgroundCtx = context(background);
+      useCellUnits(backgroundCtx);
+      drawTable(backgroundCtx, columns, rows);
+      drawWalls(backgroundCtx, walls, cellPixels);
+    },
+
+    draw(frame) {
+      const { width, height } = canvas;
+
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.globalCompositeOperation = 'source-over';
+      main.drawImage(background, 0, 0);
+
+      useCellUnits(main);
+      frame.grid.forEach((row, y) => row.forEach((cell, x) => {
+        if (cell.kind === 'target') drawCrystal(main, x, y, frame.charges.get(cellKey(x, y)) ?? 0);
+        if (cell.kind === 'mirror') {
+          const focused = frame.focus?.x === x && frame.focus.y === y;
+          drawMirror(main, x, y, frame.mirrorAngles.get(cellKey(x, y)) ?? 0, focused);
+        }
+      }));
+
+      emissionCtx.setTransform(1, 0, 0, 1, 0, 0);
+      emissionCtx.clearRect(0, 0, width, height);
+      useCellUnits(emissionCtx);
+      emissionCtx.globalCompositeOperation = 'lighter';
+      drawCrystalLight(emissionCtx, frame);
+      drawBeam(emissionCtx, frame);
+      drawEffects(emissionCtx, frame);
+
+      // 缩小再放大就是便宜的泛光：亮的地方会自然晕开，把台面照亮
+      bloomNearCtx.clearRect(0, 0, bloomNear.width, bloomNear.height);
+      bloomNearCtx.drawImage(emission, 0, 0, bloomNear.width, bloomNear.height);
+      bloomFarCtx.clearRect(0, 0, bloomFar.width, bloomFar.height);
+      bloomFarCtx.drawImage(bloomNear, 0, 0, bloomFar.width, bloomFar.height);
+
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.globalCompositeOperation = 'lighter';
+      main.imageSmoothingEnabled = true;
+      main.imageSmoothingQuality = 'high';
+      main.globalAlpha = 0.95;
+      main.drawImage(bloomFar, 0, 0, width, height);
+      main.globalAlpha = 0.7;
+      main.drawImage(bloomNear, 0, 0, width, height);
+      main.globalAlpha = 1;
+      main.drawImage(emission, 0, 0);
+      main.globalCompositeOperation = 'source-over';
+
+      useCellUnits(main);
+      frame.grid.forEach((row, y) => row.forEach((cell, x) => {
+        if (cell.kind !== 'emitter') return;
+        drawEmitter(main, x, y, cell.direction);
+      }));
+    },
+  };
 }

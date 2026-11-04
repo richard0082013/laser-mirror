@@ -3,15 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#221d55" />
     <title>激光反射</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&display=swap" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <h1 id="title">激光反射</h1>
-    <p id="hint">点击镜子旋转，把激光引到所有目标上。</p>
-    <canvas id="board" aria-label="激光反射游戏棋盘"></canvas>
-    <p id="status" role="status"></p>
-    <button id="restart" type="button">重新开始</button>
+    <header id="hud">
+      <h1 id="title">激光反射</h1>
+      <div id="pips" role="img"></div>
+    </header>
+    <canvas
+      id="board"
+      tabindex="0"
+      aria-label="激光反射棋盘。方向键选择镜子，回车或空格旋转。"
+    ></canvas>
+    <footer id="footer">
+      <p id="status" role="status"></p>
+      <button id="restart" type="button">重新开始</button>
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@ export type Level = {
 export const levels: readonly Level[] = [
   {
     id: 'two-targets',
-    name: '两个目标',
+    name: '两颗水晶',
     grid: [
       '########',
       '#>../.T#',
