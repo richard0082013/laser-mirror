@@ -8,6 +8,7 @@ const BEAM_SPEED = 26; // 格子/秒
 const EMITTER_CHARGE_DELAY = 0.45; // 秒
 const MIRROR_TURN_RATE = 16;
 const MAX_PARTICLES = 400;
+const POWER_DOWN_SECONDS = 0.7;
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -21,12 +22,16 @@ const pips = requireElement<HTMLElement>('#pips');
 const restart = requireElement<HTMLButtonElement>('#restart');
 const levelNumber = requireElement<HTMLElement>('#level-number');
 const levelName = requireElement<HTMLElement>('#level-name');
+const energyMeter = requireElement<HTMLElement>('#energy');
+const energyCells = requireElement<HTMLElement>('#energy-cells');
+const energyCount = requireElement<HTMLElement>('#energy-count');
 
 const level = levels[0];
 if (!level) throw new Error('没有可玩的关卡');
 const startGrid = parseGrid(level.grid);
 levelNumber.textContent = '第 1 关';
 levelName.textContent = level.name;
+const totalEnergy = level.energy;
 
 const renderer = createRenderer(canvas, startGrid);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -45,6 +50,13 @@ const pipElements = targets.map(() => {
   return pip;
 });
 
+const cellElements = Array.from({ length: totalEnergy }, () => {
+  const cell = document.createElement('span');
+  cell.className = 'energy-cell';
+  energyCells.append(cell);
+  return cell;
+});
+
 const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
 
 function restingAngle(grid: Grid, { x, y }: Position): number {
@@ -58,6 +70,10 @@ let solved = false;
 let revealed: number[] = [];
 let delay = EMITTER_CHARGE_DELAY;
 let celebrated = false;
+let energy = totalEnergy;
+let failed = false;
+let failedFor = 0;
+let power = 1;
 let flash = 0;
 let time = 0;
 let focus: Position | null = null;
@@ -98,6 +114,11 @@ function burst(point: Position, count: number, speed: number): void {
   }
 }
 
+/** 过关或能量用完后不能再转镜子。 */
+function isLocked(): boolean {
+  return solved || energy === 0;
+}
+
 function setFocus(cell: Position | null): void {
   focus = cell;
   canvas.style.cursor = cell ? 'pointer' : 'default';
@@ -105,7 +126,9 @@ function setFocus(cell: Position | null): void {
 }
 
 function rotateAt(cell: Position): void {
-  if (solved || grid[cell.y]?.[cell.x]?.kind !== 'mirror') return;
+  if (isLocked() || grid[cell.y]?.[cell.x]?.kind !== 'mirror') return;
+
+  energy -= 1;
 
   revealed = retractReveal(revealed, beam, center(cell));
   grid = rotateMirror(grid, cell);
@@ -114,7 +137,7 @@ function rotateAt(cell: Position): void {
   const key = cellKey(cell.x, cell.y);
   mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
   burst(center(cell), 6, 1.6);
-  if (solved) setFocus(null);
+  if (isLocked()) setFocus(null);
   requestFrame();
 }
 
@@ -124,6 +147,10 @@ function reset(): void {
   revealed = beamLengths(beam).map(() => 0);
   delay = EMITTER_CHARGE_DELAY;
   celebrated = false;
+  energy = totalEnergy;
+  failed = false;
+  failedFor = 0;
+  power = 1;
   flash = 0;
   particles = [];
   rings = [];
@@ -133,26 +160,39 @@ function reset(): void {
     const isResting = Math.abs(Math.cos(current - restingAngle(startGrid, cell))) > 0.5;
     if (!isResting) mirrorGoals.set(key, current + Math.PI / 2);
   }
-  canvas.classList.remove('won');
+  canvas.classList.remove('won', 'failed');
   requestFrame();
 }
 
 function isTargetLit(cell: Position): boolean {
-  return isReached(revealed, beam, center(cell));
+  return power > 0 && isReached(revealed, beam, center(cell));
+}
+
+function statusMessage(): string {
+  if (celebrated) return '全部点亮，过关！';
+  if (failed) return '能量耗尽，激光熄灭了。';
+  return '点亮全部水晶，每转一次耗 1 格能量。';
 }
 
 /** 只在内容变化时才写 DOM，这个函数每帧都会调用。 */
 function updateHud(): void {
   const litFlags = targets.map(isTargetLit);
-  const state = `${litFlags.join()}|${celebrated}`;
+  const state = `${litFlags.join()}|${celebrated}|${failed}|${energy}`;
   if (state === hudState) return;
   hudState = state;
 
   const lit = litFlags.filter(Boolean).length;
   litFlags.forEach((isLit, index) => pipElements[index]?.classList.toggle('lit', isLit));
   pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
-  statusLine.textContent = celebrated ? '全部点亮，过关！' : '转动镜子，点亮全部水晶。';
+  statusLine.textContent = statusMessage();
   statusLine.classList.toggle('won', celebrated);
+  statusLine.classList.toggle('failed', failed);
+  restart.classList.toggle('urgent', failed);
+
+  cellElements.forEach((cell, index) => cell.classList.toggle('full', index < energy));
+  energyCount.textContent = `${energy} / ${totalEnergy}`;
+  energyMeter.setAttribute('aria-label', `剩余能量 ${energy} / ${totalEnergy}`);
+  energyMeter.classList.toggle('low', energy === 1 && !solved);
 }
 
 function update(dt: number): void {
@@ -167,6 +207,18 @@ function update(dt: number): void {
     delay -= dt;
   } else {
     revealed = lengths.map((length, id) => Math.min(length, (revealed[id] ?? 0) + BEAM_SPEED * dt));
+  }
+
+  const fullyRevealed = lengths.every((length, id) => (revealed[id] ?? 0) >= length);
+  if (energy === 0 && !solved && fullyRevealed && !failed) {
+    failed = true;
+    canvas.classList.add('failed');
+  }
+  if (failed) {
+    failedFor += dt;
+    const fading = Math.max(0, 1 - failedFor / POWER_DOWN_SECONDS);
+    // 熄灭前不规则地闪几下，像电量耗尽的灯管
+    power = reducedMotion.matches ? 0 : fading * (Math.random() > 0.3 ? 1 : 0.2);
   }
 
   for (const [key, goal] of mirrorGoals) {
@@ -184,7 +236,6 @@ function update(dt: number): void {
     if (goal === 1 && before < 0.05) burst(center(cell), 18, 2.4);
   }
 
-  const fullyRevealed = lengths.every((length, id) => (revealed[id] ?? 0) >= length);
   if (solved && fullyRevealed && !celebrated) {
     celebrated = true;
     flash = 1;
@@ -196,7 +247,7 @@ function update(dt: number): void {
     }
   }
 
-  if (!reducedMotion.matches) spawnBeamLife(dt);
+  if (!reducedMotion.matches && !failed) spawnBeamLife(dt);
 
   particles = particles.filter((particle) => {
     particle.age += dt;
@@ -272,6 +323,7 @@ function loop(timestamp: number): void {
     charges,
     focus,
     flash,
+    power,
     won: celebrated,
     particles,
     rings,
@@ -291,7 +343,7 @@ canvas.addEventListener('click', (event) => rotateAt(cellFromEvent(event)));
 canvas.addEventListener('pointermove', (event) => {
   if (event.pointerType !== 'mouse') return;
   const cell = cellFromEvent(event);
-  setFocus(grid[cell.y]?.[cell.x]?.kind === 'mirror' && !solved ? cell : null);
+  setFocus(grid[cell.y]?.[cell.x]?.kind === 'mirror' && !isLocked() ? cell : null);
 });
 
 canvas.addEventListener('pointerleave', () => setFocus(null));
@@ -309,7 +361,7 @@ canvas.addEventListener('keydown', (event) => {
 
   if (step) {
     event.preventDefault();
-    if (solved) return;
+    if (isLocked()) return;
     const next = focus ? nextInDirection(mirrorCells, focus, step) : mirrorCells[0];
     if (next) setFocus(next);
   } else if ((event.key === 'Enter' || event.key === ' ') && focus) {
@@ -319,14 +371,14 @@ canvas.addEventListener('keydown', (event) => {
 });
 
 canvas.addEventListener('focus', () => {
-  if (canvas.matches(':focus-visible') && !focus && !solved) setFocus(mirrorCells[0] ?? null);
+  if (canvas.matches(':focus-visible') && !focus && !isLocked()) setFocus(mirrorCells[0] ?? null);
 });
 
 restart.addEventListener('click', reset);
 
 function fitToScreen(): void {
   const availableWidth = Math.min(window.innerWidth - 32, 760);
-  const availableHeight = Math.max(window.innerHeight - 170, 160);
+  const availableHeight = Math.max(window.innerHeight - 200, 160);
   const cssWidth = Math.floor(Math.min(availableWidth, availableHeight * renderer.aspectRatio));
   canvas.style.width = `${cssWidth}px`;
   canvas.style.height = `${Math.round(cssWidth / renderer.aspectRatio)}px`;

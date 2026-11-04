@@ -36,6 +36,8 @@ export type Frame = {
   charges: ReadonlyMap<string, number>;
   focus: Position | null;
   flash: number;
+  /** 激光功率：1 是正常，能量耗尽时降到 0。 */
+  power: number;
   won: boolean;
   particles: readonly Particle[];
   rings: readonly Ring[];
@@ -331,8 +333,9 @@ function drawBeamHaze(
 }
 
 function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
-  const { beam, revealed, time, flash, still } = frame;
-  const flicker = still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13);
+  const { beam, revealed, time, flash, still, power } = frame;
+  if (power <= 0) return;
+  const flicker = (still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13)) * power;
   const boost = 1 + flash * 0.8;
 
   const shownEnd = ({ from, to, beamId, start, length }: MeasuredSegment): Position | null => {
@@ -364,14 +367,14 @@ function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
   };
 
   stroke(rgba(BEAM, 0.75 * flicker), 0.11 * boost);
-  stroke(rgba(BEAM_CORE, 1), 0.06 * boost);
-  if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
+  stroke(rgba(BEAM_CORE, power), 0.06 * boost);
+  if (!still) stroke(`rgba(255, 255, 255, ${0.85 * power})`, 0.07, [0.14, 0.62]);
 
   for (const { to, beamId, start, length } of beam) {
     if ((revealed[beamId] ?? 0) < start + length) continue;
     const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 9 + to.x * 3 + to.y * 5);
-    glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM, 0.3);
-    glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, 1);
+    glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM, 0.3 * power);
+    glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, power);
   }
 }
 
