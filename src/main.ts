@@ -68,17 +68,18 @@ function chapterOf(level: Level) {
 
 function goToSelect(note = ''): void {
   selectNote = note;
-  if (location.hash === '' || location.hash === '#/') route();
-  else location.hash = '#/';
+  if (location.hash === '') route();
+  else location.hash = '';
 }
 
 /** 去下一关；下一章星数不够时回选关页，并说明还差多少。 */
 function goAfter(level: Level): void {
   const next = levelAfter(level);
   if (!next) {
-    goToSelect('这是最后一关了。回去把星星拿满吧。');
+    const perfect = totalStars(progress) === MAX_STARS;
+    goToSelect(perfect ? '全部通关，星星也拿满了。' : '这是最后一关了。回去把星星拿满吧。');
   } else if (isUnlocked(chapters, progress, next.id)) {
-    location.hash = `#/level/${next.id}`;
+    location.hash = `#${next.id}`;
   } else {
     const chapter = chapterOf(next);
     const missing = chapter ? starsNeeded(chapter, progress) : 0;
@@ -147,7 +148,7 @@ function levelTile(level: Level, nextLevel: Level | undefined): HTMLElement {
 
   const state = !unlocked ? '未解锁' : record ? (record.stars === 0 ? '已跳过' : `${record.stars} 星`) : '未玩';
   tile.setAttribute('aria-label', `第 ${number.textContent} 关 ${level.name}，${state}`);
-  if (unlocked) tile.addEventListener('click', () => { location.hash = `#/level/${level.id}`; });
+  if (unlocked) tile.addEventListener('click', () => { location.hash = `#${level.id}`; });
   return tile;
 }
 
@@ -162,7 +163,7 @@ function renderSelect(): void {
   if (next) {
     const index = allLevels.indexOf(next) + 1;
     resume.textContent = Object.keys(progress.levels).length === 0 ? '开始' : `继续第 ${index} 关`;
-    resume.onclick = () => { location.hash = `#/level/${next.id}`; };
+    resume.onclick = () => { location.hash = `#${next.id}`; };
   }
 
   requireElement('#chapters').replaceChildren(
@@ -206,7 +207,7 @@ function showSelect(): void {
 }
 
 function route(): void {
-  const id = /^#\/level\/(.+)$/.exec(location.hash)?.[1];
+  const id = location.hash.slice(1);
   const level = allLevels.find((candidate) => candidate.id === id);
   if (level && isUnlocked(chapters, progress, level.id)) showGame(level);
   else showSelect();
