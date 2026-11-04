@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { minimumRotations } from './energy';
+import { minimumRotations, starsFor } from './scoring';
 import { parseGrid } from './laser';
 import { levels } from './levels';
 
@@ -20,18 +20,21 @@ describe('minimumRotations', () => {
   });
 });
 
-describe.each(levels)('关卡 $name 的能量', ({ grid, energy }) => {
-  const minimum = minimumRotations(parseGrid(grid));
-
-  it('能量够过关，而且开局不是已过关', () => {
-    expect(minimum).not.toBeNull();
-    expect(minimum).toBeGreaterThan(0);
-    expect(energy).toBeGreaterThanOrEqual(minimum ?? Infinity);
+describe('starsFor', () => {
+  it.each([
+    { steps: 3, stars: 3 },
+    { steps: 4, stars: 2 },
+    { steps: 5, stars: 2 },
+    { steps: 6, stars: 1 },
+    { steps: 99, stars: 1 },
+  ])('最少 3 步时，用 $steps 步得 $stars 星', ({ steps, stars }) => {
+    expect(starsFor(steps, 3)).toBe(stars);
   });
 });
 
-it('第一关最少转 3 次，给 5 格能量正好允许错一次', () => {
-  const first = levels[0];
-  expect(first && minimumRotations(parseGrid(first.grid))).toBe(3);
-  expect(first?.energy).toBe(5);
+describe.each(levels)('关卡 $name 的评星标准', ({ grid, par }) => {
+  it('par 就是真正的最少步数，而且开局不是已过关', () => {
+    expect(par).toBeGreaterThan(0);
+    expect(minimumRotations(parseGrid(grid))).toBe(par);
+  });
 });

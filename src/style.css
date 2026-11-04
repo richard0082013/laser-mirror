@@ -8,7 +8,8 @@
   --crystal: #46f0ff;
   --beam: #ff2660;
   --pip-off: #8a90d0;
-  --cell-off: #39397a;
+  --star: #ffe46b;
+  --star-off: #4a4c8c;
 }
 
 * {
@@ -91,44 +92,42 @@ h1 {
   box-shadow: 0 18px 60px rgba(4, 4, 30, 0.75), 0 0 90px rgba(70, 240, 255, 0.5);
 }
 
-#board.failed {
-  box-shadow: 0 18px 60px rgba(4, 4, 30, 0.75);
-  filter: saturate(0.55) brightness(0.8);
-  transition: box-shadow 400ms ease-out, filter 700ms ease-out;
-}
-
 #board:focus-visible {
   outline: 3px solid var(--crystal);
   outline-offset: 3px;
 }
 
-#energy {
+#score {
   width: min(100%, var(--board-width, 100%));
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: var(--muted);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
-#energy-cells {
-  flex: 1;
+#step-count {
+  color: var(--text);
+  font-weight: 600;
+}
+
+#stars {
+  margin-left: auto;
   display: flex;
   gap: 4px;
 }
 
-.energy-cell {
-  flex: 1;
-  height: 10px;
-  border-radius: 2px;
-  background: var(--cell-off);
-  transition: background-color 160ms ease-out, box-shadow 160ms ease-out;
+.star {
+  width: 24px;
+  height: 24px;
+  background: var(--star-off);
+  clip-path: polygon(50% 2%, 62% 36%, 98% 37%, 69% 58%, 79% 94%, 50% 73%, 21% 94%, 31% 58%, 2% 37%, 38% 36%);
+  transition: background-color 200ms ease-out;
 }
 
-.energy-cell.full {
-  background: var(--beam);
-  box-shadow: 0 0 8px rgba(255, 38, 96, 0.7);
+.star.earned {
+  background: var(--star);
 }
 
 #status {
@@ -146,11 +145,6 @@ h1 {
   text-shadow: 0 0 18px rgba(70, 240, 255, 0.8);
 }
 
-#status.failed {
-  color: #ff9db8;
-  font-weight: 600;
-}
-
 #restart {
   flex-shrink: 0;
   min-height: 44px;
@@ -164,21 +158,9 @@ h1 {
   cursor: pointer;
 }
 
-#restart.urgent {
-  border-color: var(--beam);
-  background: var(--beam);
-  color: #fff;
-  font-weight: 600;
-}
-
 #restart:hover {
   border-color: var(--text);
   background: rgba(255, 255, 255, 0.1);
-}
-
-#restart.urgent:hover {
-  border-color: #ff5c86;
-  background: #ff5c86;
 }
 
 #restart:focus-visible {
@@ -187,8 +169,16 @@ h1 {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  #energy.low .energy-cell.full {
-    animation: energy-low 800ms ease-in-out infinite alternate;
+  #score.won .star.earned {
+    animation: star-pop 420ms cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
+  }
+
+  #score.won .star:nth-child(2) {
+    animation-delay: 120ms;
+  }
+
+  #score.won .star:nth-child(3) {
+    animation-delay: 240ms;
   }
 
   #status.won {
@@ -196,9 +186,10 @@ h1 {
   }
 }
 
-@keyframes energy-low {
-  to {
-    opacity: 0.35;
+@keyframes star-pop {
+  from {
+    transform: scale(0.2) rotate(-40deg);
+    opacity: 0;
   }
 }
 
