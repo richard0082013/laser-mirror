@@ -13,7 +13,7 @@
       <header class="hero">
         <div class="hero-top">
           <h1 class="game-title">激光反射</h1>
-          <button class="mute small-button" type="button"></button>
+          <button class="mute icon-button" type="button"></button>
         </div>
         <div class="hero-beam" aria-hidden="true"></div>
         <p class="tagline">转动镜子，把激光引到每一颗水晶上。</p>
@@ -32,7 +32,7 @@
         <pre id="daily-share" hidden></pre>
         <div class="daily-actions">
           <button id="daily-start" type="button"></button>
-          <button id="daily-copy" class="small-button" type="button" hidden>复制成绩</button>
+          <button id="daily-copy" class="icon-button" type="button" hidden></button>
           <span id="daily-copied" role="status"></span>
         </div>
       </section>
@@ -43,6 +43,15 @@
           <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="shop-coins"></span></span>
         </div>
         <p class="shop-note">玩每日一题和第一次过关能拿金币。道具只能在闯关里用。</p>
+        <div id="draw-box">
+          <div id="draw-stage" aria-hidden="true"></div>
+          <div class="draw-text">
+            <h3>幸运抽奖</h3>
+            <p id="draw-odds"></p>
+          </div>
+          <button id="draw" type="button"></button>
+        </div>
+        <p id="draw-result" role="status"></p>
         <div id="shop-items"></div>
       </section>
     </main>
@@ -68,23 +77,23 @@
       <div id="result" hidden>
         <pre id="result-share"></pre>
         <div class="daily-actions">
-          <button id="result-copy" class="primary" type="button">复制成绩</button>
+          <button id="result-copy" class="primary icon-button" type="button"></button>
           <span id="result-copied" role="status"></span>
         </div>
       </div>
       <div id="tools">
-        <button id="hint" type="button"></button>
-        <button id="preview" type="button"></button>
-        <button id="undo" type="button"></button>
+        <button id="hint" class="icon-button tool" type="button"></button>
+        <button id="preview" class="icon-button tool" type="button"></button>
+        <button id="undo" class="icon-button tool" type="button"></button>
         <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="game-coins"></span></span>
       </div>
       <footer id="footer">
-        <button id="back" class="small-button" type="button">选关</button>
-        <button class="mute small-button" type="button"></button>
+        <button id="back" class="icon-button" type="button"></button>
+        <button class="mute icon-button" type="button"></button>
         <span class="spacer"></span>
-        <button id="restart" type="button">重新开始</button>
-        <button id="skip" type="button">跳过这关</button>
-        <button id="next" class="primary" type="button" hidden>下一关</button>
+        <button id="restart" class="icon-button" type="button"></button>
+        <button id="skip" class="icon-button" type="button"></button>
+        <button id="next" class="primary icon-button" type="button" hidden></button>
       </footer>
     </main>
     <script type="module" src="/src/main.ts"></script>

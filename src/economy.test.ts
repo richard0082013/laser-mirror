@@ -6,11 +6,16 @@ import {
   chooseSkin,
   currentStreak,
   dailyReward,
+  draw,
+  DRAW_PRICE,
+  DRAW_TABLE,
+  ITEM_PRICES,
   levelReward,
   loadMeta,
   type Meta,
   newMeta,
   noteDailyAttempt,
+  pickPrize,
   recordDaily,
   saveMeta,
   spendItem,
@@ -159,5 +164,51 @@ describe('每日成绩和连续天数', () => {
     expect(attemptsToday(meta, '2026-11-05')).toBe(2);
     expect(attemptsToday(meta, '2026-11-06')).toBe(0);
     expect(noteDailyAttempt(meta, '2026-11-06').attempt).toEqual({ date: '2026-11-06', count: 1 });
+  });
+});
+
+describe('抽奖', () => {
+  it('公布的概率加起来正好是 100%', () => {
+    expect(DRAW_TABLE.reduce((sum, { weight }) => sum + weight, 0)).toBe(100);
+  });
+
+  it('随机数落在哪一段就抽到哪一项', () => {
+    expect(pickPrize(0)).toEqual({ kind: 'item', item: 'undo', count: 1 });
+    expect(pickPrize(0.4499)).toEqual({ kind: 'item', item: 'undo', count: 1 });
+    expect(pickPrize(0.45)).toEqual({ kind: 'item', item: 'preview', count: 1 });
+    expect(pickPrize(0.75)).toEqual({ kind: 'item', item: 'hint', count: 1 });
+    expect(pickPrize(0.9)).toEqual({ kind: 'coins', amount: 20 });
+    expect(pickPrize(0.9999)).toEqual({ kind: 'item', item: 'hint', count: 2 });
+  });
+
+  it('按直接购买的价格算，平均比花的钱值，但不是稳赚金币', () => {
+    const value = DRAW_TABLE.reduce((sum, { prize, weight }) => {
+      const worth = prize.kind === 'coins' ? prize.amount : ITEM_PRICES[prize.item] * prize.count;
+      return sum + (worth * weight) / 100;
+    }, 0);
+    const coinsBack = DRAW_TABLE.reduce(
+      (sum, { prize, weight }) => sum + (prize.kind === 'coins' ? (prize.amount * weight) / 100 : 0),
+      0,
+    );
+    expect(value).toBeGreaterThan(DRAW_PRICE);
+    expect(coinsBack).toBeLessThan(DRAW_PRICE); // 不能靠连抽刷金币
+  });
+
+  it('抽到道具：扣币，道具加一', () => {
+    const result = draw({ ...newMeta(), coins: DRAW_PRICE }, 0.5);
+    expect(result?.meta.coins).toBe(0);
+    expect(result?.meta.items.preview).toBe(newMeta().items.preview + 1);
+  });
+
+  it('抽到金币：扣掉抽奖钱再加奖金', () => {
+    expect(draw({ ...newMeta(), coins: 10 }, 0.9)?.meta.coins).toBe(22);
+  });
+
+  it('抽到两个提示时加两个', () => {
+    expect(draw(newMeta(), 0.99)?.meta.items.hint).toBe(newMeta().items.hint + 2);
+  });
+
+  it('金币不够不能抽', () => {
+    expect(draw({ ...newMeta(), coins: DRAW_PRICE - 1 }, 0.5)).toBeNull();
   });
 });

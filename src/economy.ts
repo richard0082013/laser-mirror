@@ -124,6 +124,42 @@ export function spendItem(meta: Meta, item: ItemId): Meta | null {
   return { ...stocked, items: { ...stocked.items, [item]: stocked.items[item] - 1 } };
 }
 
+export type Prize = { kind: 'item'; item: ItemId; count: number } | { kind: 'coins'; amount: number };
+
+export const DRAW_PRICE = 8;
+
+/** 权重加起来是 100，也就是页面上公布的百分比。 */
+export const DRAW_TABLE: readonly { prize: Prize; weight: number }[] = [
+  { prize: { kind: 'item', item: 'undo', count: 1 }, weight: 45 },
+  { prize: { kind: 'item', item: 'preview', count: 1 }, weight: 30 },
+  { prize: { kind: 'item', item: 'hint', count: 1 }, weight: 15 },
+  { prize: { kind: 'coins', amount: 20 }, weight: 8 },
+  { prize: { kind: 'item', item: 'hint', count: 2 }, weight: 2 },
+];
+
+/** roll 是 0 到 1 之间的随机数（不含 1）。 */
+export function pickPrize(roll: number): Prize {
+  let left = roll * 100;
+  for (const { prize, weight } of DRAW_TABLE) {
+    if (left < weight) return prize;
+    left -= weight;
+  }
+  return DRAW_TABLE[0]?.prize ?? { kind: 'coins', amount: 0 };
+}
+
+/** 扣币并发奖。金币不够时返回 null。 */
+export function draw(meta: Meta, roll: number): { meta: Meta; prize: Prize } | null {
+  if (meta.coins < DRAW_PRICE) return null;
+  const prize = pickPrize(roll);
+  const paid: Meta = { ...meta, coins: meta.coins - DRAW_PRICE };
+  return {
+    prize,
+    meta: prize.kind === 'coins'
+      ? addCoins(paid, prize.amount)
+      : { ...paid, items: { ...paid.items, [prize.item]: paid.items[prize.item] + prize.count } },
+  };
+}
+
 /** 买下并穿上；已经有的直接穿上。买不起时返回 null。 */
 export function chooseSkin(meta: Meta, skin: SkinId): Meta | null {
   if (meta.ownedSkins.includes(skin)) return { ...meta, skin };
