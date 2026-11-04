@@ -54,6 +54,7 @@ const ui: GameUi = {
   inventoryNote: requireElement('#inventory-note'),
   stars: requireElement('#stars'),
   restart: requireElement('#restart'),
+  hint: requireElement('#hint'),
 };
 
 const MAX_STARS = allLevels.length * 3;
@@ -87,6 +88,12 @@ function goAfter(level: Level): void {
   }
 }
 
+function setWon(won: boolean): void {
+  nextButton.hidden = !won;
+  skipButton.hidden = won;
+  ui.hint.hidden = won;
+}
+
 function showGame(level: Level): void {
   selectScreen.hidden = true;
   gameScreen.hidden = false;
@@ -95,21 +102,16 @@ function showGame(level: Level): void {
   levelNumber.textContent = `第 ${allLevels.indexOf(level) + 1} 关`;
   levelName.textContent = level.name;
   document.title = `${level.name} | 激光反射`;
-  nextButton.hidden = true;
-  skipButton.hidden = false;
+  setWon(false);
 
   game = startGame(level, ui, sound, (stars) => {
     progress = recordWin(progress, level.id, stars);
     saveProgress(storage, progress);
-    nextButton.hidden = false;
-    skipButton.hidden = true;
+    setWon(true);
     if (document.activeElement === canvas) nextButton.focus({ preventScroll: true });
   });
 
-  ui.restart.onclick = () => {
-    nextButton.hidden = true;
-    skipButton.hidden = false;
-  };
+  ui.restart.onclick = () => setWon(false);
   nextButton.onclick = () => goAfter(level);
   skipButton.onclick = () => {
     progress = recordSkip(progress, level.id);

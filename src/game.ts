@@ -15,7 +15,7 @@ import type { Level } from './levels';
 import { nextInDirection } from './navigation';
 import { createFrameMonitor } from './quality';
 import { cellKey, createRenderer, CRYSTAL_COLORS, PARTICLE_COLORS, type Particle, type Rgb, type Ring } from './render';
-import { starsFor } from './scoring';
+import { solve, starsFor } from './scoring';
 import type { Sound } from './sound';
 
 const BEAM_SPEED = 26; // 格子/秒
@@ -35,6 +35,7 @@ export type GameUi = {
   inventoryNote: HTMLElement;
   stars: HTMLElement;
   restart: HTMLButtonElement;
+  hint: HTMLButtonElement;
 };
 
 export type Game = { stop(): void };
@@ -91,7 +92,6 @@ export function startGame(
       return star;
     }),
   );
-  ui.parNote.textContent = `${level.par} 步内得 3 星`;
   canvas.classList.remove('won');
 
   let grid: Grid = startGrid;
@@ -101,6 +101,8 @@ export function startGame(
   let delay = EMITTER_CHARGE_DELAY;
   let celebrated = false;
   let steps = 0;
+  let hint: Position | null = null;
+  let usedHint = false;
   let flash = 0;
   let time = 0;
   let focus: Position | null = null;
@@ -187,6 +189,7 @@ export function startGame(
     revealed = retractReveal(revealed, beam, center(position));
     grid = next;
     steps += 1;
+    hint = null;
 
     const key = cellKey(position.x, position.y);
     const after = grid[position.y]?.[position.x];
@@ -214,10 +217,19 @@ export function startGame(
     delay = EMITTER_CHARGE_DELAY;
     celebrated = false;
     steps = 0;
+    hint = null;
+    usedHint = false;
     flash = 0;
     particles = [];
     rings = [];
     canvas.classList.remove('won');
+    requestFrame();
+  }
+
+  function showHint(): void {
+    if (solved) return;
+    hint = solve(grid, inventory)?.[0] ?? null;
+    usedHint = true;
     requestFrame();
   }
 
@@ -231,7 +243,7 @@ export function startGame(
   function updateHud(): void {
     const litFlags = targets.map(isTargetLit);
     const left = inventory - countPlaced(grid);
-    const state = `${litFlags.join()}|${celebrated}|${steps}|${left}`;
+    const state = `${litFlags.join()}|${celebrated}|${steps}|${left}|${hint !== null}|${usedHint}`;
     if (state === hudState) return;
     hudState = state;
 
@@ -241,8 +253,9 @@ export function startGame(
     });
     ui.pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
 
-    const stars = starsFor(steps, level.par);
-    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : defaultMessage;
+    const stars = starsFor(steps, level.par, usedHint);
+    const hintMessage = '点一下金色光圈里的格子。';
+    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : hint ? hintMessage : defaultMessage;
     ui.status.classList.toggle('won', celebrated);
 
     // 过关前显示按现在的步数还能拿几星，让玩家看到每多点一次的代价
@@ -251,6 +264,7 @@ export function startGame(
     });
     ui.stars.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
     ui.stepCount.textContent = `步数 ${steps}`;
+    ui.parNote.textContent = usedHint ? '用过提示，最多 2 星' : `${level.par} 步内得 3 星`;
     ui.inventoryNote.textContent = inventory > 0 ? `还能放 ${left} 面镜子` : '';
     ui.score.classList.toggle('won', celebrated);
   }
@@ -293,7 +307,7 @@ export function startGame(
       celebrated = true;
       flash = 1;
       canvas.classList.add('won');
-      const stars = starsFor(steps, level.par);
+      const stars = starsFor(steps, level.par, usedHint);
       sound.win(stars);
       for (const position of targets) {
         const point = center(position);
@@ -390,6 +404,7 @@ export function startGame(
       mirrorAngles,
       charges,
       focus,
+      hint,
       canPlace: canPlace(),
       flash,
       won: celebrated,
@@ -446,6 +461,7 @@ export function startGame(
   }, { signal });
 
   ui.restart.addEventListener('click', reset, { signal });
+  ui.hint.addEventListener('click', showHint, { signal });
 
   function fitToScreen(): void {
     const others = ui.screen.getBoundingClientRect().height - canvas.getBoundingClientRect().height;

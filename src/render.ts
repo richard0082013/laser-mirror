@@ -9,6 +9,7 @@ export type Rgb = readonly [number, number, number];
 const WHITE: Rgb = [255, 255, 255];
 const FOCUS: Rgb = [70, 240, 255];
 const SPARK: Rgb = [255, 190, 150];
+const HINT: Rgb = [255, 228, 107];
 
 const BEAM_COLORS: Record<BeamColor, { glow: Rgb; core: Rgb }> = {
   red: { glow: [255, 38, 96], core: [255, 238, 242] },
@@ -45,6 +46,8 @@ export type Frame = {
   mirrorAngles: ReadonlyMap<string, number>;
   charges: ReadonlyMap<string, number>;
   focus: Position | null;
+  /** 提示要玩家点的格子。 */
+  hint: Position | null;
   /** 还能放镜子时，鼠标停在空地上会显示一面半透明的镜子。 */
   canPlace: boolean;
   flash: number;
@@ -460,6 +463,19 @@ function drawCrystalLight(ctx: CanvasRenderingContext2D, frame: Frame): void {
   }));
 }
 
+function drawHint(ctx: CanvasRenderingContext2D, { hint, time, still }: Frame): void {
+  if (!hint) return;
+  const cx = hint.x + 0.5;
+  const cy = hint.y + 0.5;
+  const pulse = still ? 0.5 : 0.5 + 0.5 * Math.sin(time * 5);
+  glow(ctx, cx, cy, 0.8, HINT, 0.25 + 0.3 * pulse);
+  ctx.strokeStyle = rgba(HINT, 0.75 + 0.25 * pulse);
+  ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.46 + 0.04 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 function drawEffects(ctx: CanvasRenderingContext2D, frame: Frame): void {
   for (const { x, y, vx, vy, age, life, size, color } of frame.particles) {
     const fade = 1 - age / life;
@@ -585,6 +601,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
       emissionCtx.globalCompositeOperation = 'lighter';
       drawCrystalLight(emissionCtx, frame);
       drawBeam(emissionCtx, frame);
+      drawHint(emissionCtx, frame);
       drawEffects(emissionCtx, frame);
 
       // 缩小再放大就是便宜的泛光：亮的地方会自然晕开，把台面照亮
