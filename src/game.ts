@@ -1,0 +1,473 @@
+import { beamLengths, colorsReaching, retractReveal } from './beam';
+import {
+  countPlaced,
+  countTargets,
+  type Grid,
+  interact,
+  isSolved,
+  parseGrid,
+  type Position,
+  type Segment,
+  targetAccepts,
+  traceLasers,
+} from './laser';
+import type { Level } from './levels';
+import { nextInDirection } from './navigation';
+import { createFrameMonitor } from './quality';
+import { cellKey, createRenderer, CRYSTAL_COLORS, PARTICLE_COLORS, type Particle, type Rgb, type Ring } from './render';
+import { starsFor } from './scoring';
+import type { Sound } from './sound';
+
+const BEAM_SPEED = 26; // 格子/秒
+const EMITTER_CHARGE_DELAY = 0.45; // 秒
+const MIRROR_TURN_RATE = 16;
+const MAX_PARTICLES = 400;
+const STAR_COUNT = 3;
+
+export type GameUi = {
+  screen: HTMLElement;
+  canvas: HTMLCanvasElement;
+  status: HTMLElement;
+  pips: HTMLElement;
+  score: HTMLElement;
+  stepCount: HTMLElement;
+  parNote: HTMLElement;
+  inventoryNote: HTMLElement;
+  stars: HTMLElement;
+  restart: HTMLButtonElement;
+};
+
+export type Game = { stop(): void };
+
+const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
+
+const isRotatable = (grid: Grid, { x, y }: Position): boolean => {
+  const kind = grid[y]?.[x]?.kind;
+  return kind === 'mirror' || kind === 'splitter';
+};
+
+function cellsWhere(grid: Grid, test: (position: Position) => boolean): Position[] {
+  return grid.flatMap((row, y) =>
+    row.flatMap((_, x) => (test({ x, y }) ? [{ x, y }] : [])),
+  );
+}
+
+function restingAngle(grid: Grid, { x, y }: Position): number {
+  const cell = grid[y]?.[x];
+  const mirror = cell?.kind === 'mirror' || cell?.kind === 'splitter' ? cell.mirror : '/';
+  return mirror === '\\' ? Math.PI / 4 : -Math.PI / 4;
+}
+
+/** 开始玩一关。换关时调用 stop，所有事件和动画都会停下。 */
+export function startGame(
+  level: Level,
+  ui: GameUi,
+  sound: Sound,
+  onWin: (stars: number) => void,
+): Game {
+  const { canvas } = ui;
+  const listeners = new AbortController();
+  const { signal } = listeners;
+  const startGrid = parseGrid(level.grid);
+  const inventory = level.inventory ?? 0;
+  const defaultMessage = level.hint ?? '转动镜子，点亮全部水晶。';
+  const renderer = createRenderer(canvas, startGrid);
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const isSlow = createFrameMonitor();
+
+  const targets = cellsWhere(startGrid, ({ x, y }) => startGrid[y]?.[x]?.kind === 'target');
+
+  ui.pips.replaceChildren(
+    ...Array.from({ length: countTargets(startGrid) }, () => {
+      const pip = document.createElement('span');
+      pip.className = 'pip';
+      return pip;
+    }),
+  );
+  ui.stars.replaceChildren(
+    ...Array.from({ length: STAR_COUNT }, () => {
+      const star = document.createElement('span');
+      star.className = 'star';
+      return star;
+    }),
+  );
+  ui.parNote.textContent = `${level.par} 步内得 3 星`;
+  canvas.classList.remove('won');
+
+  let grid: Grid = startGrid;
+  let beam: Segment[] = [];
+  let solved = false;
+  let revealed: number[] = [];
+  let delay = EMITTER_CHARGE_DELAY;
+  let celebrated = false;
+  let steps = 0;
+  let flash = 0;
+  let time = 0;
+  let focus: Position | null = null;
+  let moteDebt = 0;
+  let particles: Particle[] = [];
+  let rings: Ring[] = [];
+  let hudState = '';
+  let stopped = false;
+  let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+
+  const mirrorAngles = new Map<string, number>();
+  const mirrorGoals = new Map<string, number>();
+  const charges = new Map(targets.map((cell) => [cellKey(cell.x, cell.y), 0]));
+
+  const canPlace = () => !solved && countPlaced(grid) < inventory;
+
+  const canInteract = (position: Position): boolean => {
+    if (solved) return false;
+    const cell = grid[position.y]?.[position.x];
+    return cell?.kind === 'empty' ? canPlace() : isRotatable(grid, position);
+  };
+
+  /** 放下或收回镜子之后，让角度表和地图对上。 */
+  function syncAngles(): void {
+    const present = new Set<string>();
+    for (const position of cellsWhere(grid, (cell) => isRotatable(grid, cell))) {
+      const key = cellKey(position.x, position.y);
+      present.add(key);
+      if (!mirrorGoals.has(key)) {
+        const angle = restingAngle(grid, position);
+        mirrorGoals.set(key, angle);
+        mirrorAngles.set(key, angle);
+      }
+    }
+    for (const key of mirrorGoals.keys()) {
+      if (!present.has(key)) {
+        mirrorGoals.delete(key);
+        mirrorAngles.delete(key);
+      }
+    }
+  }
+
+  function refreshTrace(): void {
+    const trace = traceLasers(grid);
+    beam = trace.segments;
+    solved = isSolved(grid, trace);
+    syncAngles();
+  }
+
+  function emit(particle: Omit<Particle, 'age'>): void {
+    if (particles.length < MAX_PARTICLES) particles.push({ ...particle, age: 0 });
+  }
+
+  function burst(point: Position, count: number, speed: number, color: Rgb): void {
+    if (reducedMotion.matches) return;
+    const colors = [color, PARTICLE_COLORS.white, PARTICLE_COLORS.spark];
+    for (let i = 0; i < count; i += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = speed * (0.3 + Math.random());
+      emit({
+        x: point.x,
+        y: point.y,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity,
+        life: 0.4 + Math.random() * 0.7,
+        size: 0.018 + Math.random() * 0.03,
+        color: colors[i % colors.length] ?? PARTICLE_COLORS.white,
+      });
+    }
+  }
+
+  function setFocus(position: Position | null): void {
+    focus = position;
+    canvas.style.cursor = position ? 'pointer' : 'default';
+    requestFrame();
+  }
+
+  function act(position: Position): void {
+    if (solved) return;
+    const before = grid[position.y]?.[position.x];
+    const next = interact(grid, position, inventory);
+    if (!next || !before) return;
+
+    revealed = retractReveal(revealed, beam, center(position));
+    grid = next;
+    steps += 1;
+
+    const key = cellKey(position.x, position.y);
+    const after = grid[position.y]?.[position.x];
+    if (before.kind === 'empty') {
+      sound.place();
+    } else if (after?.kind === 'empty') {
+      sound.remove();
+    } else {
+      sound.rotate();
+      mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
+    }
+
+    refreshTrace();
+    burst(center(position), 6, 1.6, PARTICLE_COLORS.spark);
+    if (solved) setFocus(null);
+    requestFrame();
+  }
+
+  function reset(): void {
+    grid = startGrid;
+    mirrorGoals.clear();
+    mirrorAngles.clear();
+    refreshTrace();
+    revealed = beamLengths(beam).map(() => 0);
+    delay = EMITTER_CHARGE_DELAY;
+    celebrated = false;
+    steps = 0;
+    flash = 0;
+    particles = [];
+    rings = [];
+    canvas.classList.remove('won');
+    requestFrame();
+  }
+
+  function isTargetLit(position: Position): boolean {
+    const cell = grid[position.y]?.[position.x];
+    if (cell?.kind !== 'target') return false;
+    return targetAccepts(cell.color, colorsReaching(revealed, beam, center(position)));
+  }
+
+  /** 只在内容变化时才写 DOM，这个函数每帧都会调用。 */
+  function updateHud(): void {
+    const litFlags = targets.map(isTargetLit);
+    const left = inventory - countPlaced(grid);
+    const state = `${litFlags.join()}|${celebrated}|${steps}|${left}`;
+    if (state === hudState) return;
+    hudState = state;
+
+    const lit = litFlags.filter(Boolean).length;
+    Array.from(ui.pips.children).forEach((pip, index) => {
+      pip.classList.toggle('lit', litFlags[index] === true);
+    });
+    ui.pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
+
+    const stars = starsFor(steps, level.par);
+    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : defaultMessage;
+    ui.status.classList.toggle('won', celebrated);
+
+    // 过关前显示按现在的步数还能拿几星，让玩家看到每多点一次的代价
+    Array.from(ui.stars.children).forEach((star, index) => {
+      star.classList.toggle('earned', index < stars);
+    });
+    ui.stars.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
+    ui.stepCount.textContent = `步数 ${steps}`;
+    ui.inventoryNote.textContent = inventory > 0 ? `还能放 ${left} 面镜子` : '';
+    ui.score.classList.toggle('won', celebrated);
+  }
+
+  function update(dt: number): void {
+    time += dt;
+    flash = Math.max(0, flash - dt * 1.5);
+
+    const lengths = beamLengths(beam);
+    if (reducedMotion.matches) {
+      revealed = lengths;
+      delay = 0;
+    } else if (delay > 0) {
+      delay -= dt;
+    } else {
+      revealed = lengths.map((length, id) => Math.min(length, (revealed[id] ?? 0) + BEAM_SPEED * dt));
+    }
+
+    for (const [key, goal] of mirrorGoals) {
+      const current = mirrorAngles.get(key) ?? goal;
+      const next = reducedMotion.matches ? goal : current + (goal - current) * (1 - Math.exp(-dt * MIRROR_TURN_RATE));
+      mirrorAngles.set(key, next);
+    }
+
+    for (const position of targets) {
+      const key = cellKey(position.x, position.y);
+      const before = charges.get(key) ?? 0;
+      const goal = isTargetLit(position) ? 1 : 0;
+      const after = reducedMotion.matches ? goal : before + (goal - before) * (1 - Math.exp(-dt * 14));
+      charges.set(key, after);
+      if (goal === 1 && before < 0.05) {
+        const cell = grid[position.y]?.[position.x];
+        burst(center(position), 18, 2.4, cell?.kind === 'target' ? CRYSTAL_COLORS[cell.color] : PARTICLE_COLORS.white);
+        sound.crystal();
+      }
+    }
+
+    const fullyRevealed = lengths.every((length, id) => (revealed[id] ?? 0) >= length);
+    if (solved && fullyRevealed && !celebrated) {
+      celebrated = true;
+      flash = 1;
+      canvas.classList.add('won');
+      const stars = starsFor(steps, level.par);
+      sound.win(stars);
+      for (const position of targets) {
+        const point = center(position);
+        const cell = grid[position.y]?.[position.x];
+        const color = cell?.kind === 'target' ? CRYSTAL_COLORS[cell.color] : PARTICLE_COLORS.white;
+        burst(point, 70, 5, color);
+        if (!reducedMotion.matches) rings.push({ ...point, age: 0, life: 0.9, color });
+      }
+      onWin(stars);
+    }
+
+    if (!reducedMotion.matches) spawnBeamLife(dt);
+
+    particles = particles.filter((particle) => {
+      particle.age += dt;
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+      particle.vx *= 1 - dt * 1.8;
+      particle.vy *= 1 - dt * 1.8;
+      return particle.age < particle.life;
+    });
+    rings = rings.filter((ring) => {
+      ring.age += dt;
+      return ring.age < ring.life;
+    });
+
+    updateHud();
+  }
+
+  /** 光束里飘的尘埃，和碰到镜子、墙时溅出的火花。 */
+  function spawnBeamLife(dt: number): void {
+    moteDebt += dt * 22;
+    while (moteDebt >= 1) {
+      moteDebt -= 1;
+      const segment = beam[Math.floor(Math.random() * beam.length)];
+      if (!segment || (revealed[segment.emitter] ?? 0) < segment.start + segment.length) continue;
+
+      const along = Math.random();
+      emit({
+        x: segment.from.x + (segment.to.x - segment.from.x) * along + (Math.random() - 0.5) * 0.12,
+        y: segment.from.y + (segment.to.y - segment.from.y) * along + (Math.random() - 0.5) * 0.12,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        life: 0.5 + Math.random() * 0.7,
+        size: 0.018,
+        color: PARTICLE_COLORS.white,
+      });
+
+      if (Math.random() < 0.4) {
+        const angle = Math.random() * Math.PI * 2;
+        emit({
+          x: segment.to.x,
+          y: segment.to.y,
+          vx: Math.cos(angle) * 2.2,
+          vy: Math.sin(angle) * 2.2,
+          life: 0.18 + Math.random() * 0.25,
+          size: 0.022,
+          color: PARTICLE_COLORS.spark,
+        });
+      }
+    }
+  }
+
+  let lastTimestamp: number | null = null;
+  let frameRequested = false;
+
+  /** 开了“减少动态效果”时画面不会自己变，只在有输入时才画一帧。 */
+  function requestFrame(): void {
+    if (frameRequested || stopped) return;
+    frameRequested = true;
+    requestAnimationFrame(loop);
+  }
+
+  function loop(timestamp: number): void {
+    frameRequested = false;
+    if (stopped) return;
+
+    const elapsed = lastTimestamp === null ? 0 : Math.max(0, (timestamp - lastTimestamp) / 1000);
+    lastTimestamp = timestamp;
+
+    if (!reducedMotion.matches && pixelRatio > 1 && elapsed > 0 && isSlow(elapsed)) {
+      // 设备跟不上时先降分辨率，保住流畅度
+      pixelRatio = 1;
+      fitToScreen();
+    }
+
+    update(Math.min(0.05, elapsed));
+    if (stopped) return;
+    renderer.draw({
+      grid,
+      beam,
+      revealed,
+      time,
+      mirrorAngles,
+      charges,
+      focus,
+      canPlace: canPlace(),
+      flash,
+      won: celebrated,
+      particles,
+      rings,
+      still: reducedMotion.matches,
+    });
+    if (!reducedMotion.matches) requestFrame();
+  }
+
+  function cellFromEvent(event: MouseEvent): Position {
+    const bounds = canvas.getBoundingClientRect();
+    return renderer.cellAt((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
+  }
+
+  canvas.addEventListener('click', (event) => act(cellFromEvent(event)), { signal });
+
+  // 只有真正的鼠标才有悬停；手指点一下不该留下高亮
+  canvas.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    const position = cellFromEvent(event);
+    setFocus(canInteract(position) ? position : null);
+  }, { signal });
+
+  canvas.addEventListener('pointerleave', () => setFocus(null), { signal });
+  canvas.addEventListener('blur', () => setFocus(null), { signal });
+
+  const keyboardCells = () => cellsWhere(grid, canInteract);
+
+  /** 方向键跳到那个方向上最近的可操作格子，回车或空格操作。 */
+  canvas.addEventListener('keydown', (event) => {
+    const moves: Record<string, Position> = {
+      ArrowUp: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 },
+    };
+    const move = moves[event.key];
+
+    if (move) {
+      event.preventDefault();
+      if (solved) return;
+      const cells = keyboardCells();
+      const next = focus ? nextInDirection(cells, focus, move) : cells[0];
+      if (next) setFocus(next);
+    } else if ((event.key === 'Enter' || event.key === ' ') && focus) {
+      event.preventDefault();
+      act(focus);
+    }
+  }, { signal });
+
+  canvas.addEventListener('focus', () => {
+    if (canvas.matches(':focus-visible') && !focus && !solved) setFocus(keyboardCells()[0] ?? null);
+  }, { signal });
+
+  ui.restart.addEventListener('click', reset, { signal });
+
+  function fitToScreen(): void {
+    const others = ui.screen.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
+    const availableWidth = Math.min(ui.screen.clientWidth, 760);
+    const availableHeight = Math.max(window.innerHeight - others - 32, 200);
+    const cssWidth = Math.floor(Math.min(availableWidth, availableHeight * renderer.aspectRatio));
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${Math.round(cssWidth / renderer.aspectRatio)}px`;
+    renderer.resize(cssWidth, pixelRatio);
+    requestFrame(); // 改尺寸会清空画布
+  }
+
+  window.addEventListener('resize', fitToScreen, { signal });
+  reducedMotion.addEventListener('change', requestFrame, { signal });
+
+  reset();
+  fitToScreen();
+
+  return {
+    stop() {
+      stopped = true;
+      listeners.abort();
+    },
+  };
+}

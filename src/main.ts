@@ -1,14 +1,17 @@
-import { beamLengths, isReached, type MeasuredSegment, measureSegments, retractReveal } from './beam';
-import { type Grid, isSolved, parseGrid, type Position, rotateMirror, traceLasers } from './laser';
-import { levels } from './levels';
-import { nextInDirection } from './navigation';
-import { cellKey, createRenderer, PARTICLE_COLORS, type Particle, type Ring } from './render';
-import { starsFor } from './scoring';
-
-const BEAM_SPEED = 26; // 格子/秒
-const EMITTER_CHARGE_DELAY = 0.45; // 秒
-const MIRROR_TURN_RATE = 16;
-const MAX_PARTICLES = 400;
+import { type Game, type GameUi, startGame } from './game';
+import { allLevels, chapters, type Level } from './levels';
+import {
+  isUnlocked,
+  type KeyValueStore,
+  loadProgress,
+  nextToPlay,
+  recordSkip,
+  recordWin,
+  saveProgress,
+  starsNeeded,
+  totalStars,
+} from './progress';
+import { createSound } from './sound';
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -16,357 +19,216 @@ function requireElement<T extends Element>(selector: string): T {
   return element;
 }
 
-const canvas = requireElement<HTMLCanvasElement>('#board');
-const statusLine = requireElement<HTMLElement>('#status');
-const pips = requireElement<HTMLElement>('#pips');
-const restart = requireElement<HTMLButtonElement>('#restart');
+/** 有些环境连访问 localStorage 都会抛错。 */
+function openStorage(): KeyValueStore | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const storage = openStorage();
+const sound = createSound(storage);
+let progress = loadProgress(storage);
+let game: Game | null = null;
+let selectNote = '';
+
+const selectScreen = requireElement<HTMLElement>('#select-screen');
+const gameScreen = requireElement<HTMLElement>('#game-screen');
 const levelNumber = requireElement<HTMLElement>('#level-number');
 const levelName = requireElement<HTMLElement>('#level-name');
-const score = requireElement<HTMLElement>('#score');
-const stepCount = requireElement<HTMLElement>('#step-count');
-const parNote = requireElement<HTMLElement>('#par-note');
-const starRow = requireElement<HTMLElement>('#stars');
+const nextButton = requireElement<HTMLButtonElement>('#next');
+const skipButton = requireElement<HTMLButtonElement>('#skip');
+const backButton = requireElement<HTMLButtonElement>('#back');
+const canvas = requireElement<HTMLCanvasElement>('#board');
 
-const level = levels[0];
-if (!level) throw new Error('没有可玩的关卡');
-const startGrid = parseGrid(level.grid);
-levelNumber.textContent = '第 1 关';
-levelName.textContent = level.name;
-const par = level.par;
-parNote.textContent = `${par} 步内得 3 星`;
+const ui: GameUi = {
+  screen: gameScreen,
+  canvas,
+  status: requireElement('#status'),
+  pips: requireElement('#pips'),
+  score: requireElement('#score'),
+  stepCount: requireElement('#step-count'),
+  parNote: requireElement('#par-note'),
+  inventoryNote: requireElement('#inventory-note'),
+  stars: requireElement('#stars'),
+  restart: requireElement('#restart'),
+};
 
-const renderer = createRenderer(canvas, startGrid);
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const MAX_STARS = allLevels.length * 3;
 
-const targets = startGrid.flatMap((row, y) =>
-  row.flatMap((cell, x) => (cell.kind === 'target' ? [{ x, y }] : [])),
-);
-const mirrorCells = startGrid.flatMap((row, y) =>
-  row.flatMap((cell, x) => (cell.kind === 'mirror' ? [{ x, y }] : [])),
-);
-
-const pipElements = targets.map(() => {
-  const pip = document.createElement('span');
-  pip.className = 'pip';
-  pips.append(pip);
-  return pip;
-});
-
-const starElements = Array.from({ length: 3 }, () => {
-  const star = document.createElement('span');
-  star.className = 'star';
-  starRow.append(star);
-  return star;
-});
-
-const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
-
-function restingAngle(grid: Grid, { x, y }: Position): number {
-  const cell = grid[y]?.[x];
-  return cell?.kind === 'mirror' && cell.mirror === '\\' ? Math.PI / 4 : -Math.PI / 4;
+function levelAfter(level: Level): Level | undefined {
+  return allLevels[allLevels.indexOf(level) + 1];
 }
 
-let grid: Grid = startGrid;
-let beam: MeasuredSegment[] = [];
-let solved = false;
-let revealed: number[] = [];
-let delay = EMITTER_CHARGE_DELAY;
-let celebrated = false;
-let steps = 0;
-let flash = 0;
-let time = 0;
-let focus: Position | null = null;
-let moteDebt = 0;
-let particles: Particle[] = [];
-let rings: Ring[] = [];
-let hudState = '';
-
-const mirrorAngles = new Map(mirrorCells.map((cell) => [cellKey(cell.x, cell.y), restingAngle(startGrid, cell)]));
-const mirrorGoals = new Map(mirrorAngles);
-const charges = new Map(targets.map((cell) => [cellKey(cell.x, cell.y), 0]));
-
-function refreshTrace(): void {
-  const trace = traceLasers(grid);
-  beam = measureSegments(trace.segments);
-  solved = isSolved(grid, trace);
+function chapterOf(level: Level) {
+  return chapters.find(({ levels }) => levels.includes(level));
 }
 
-function emit(particle: Omit<Particle, 'age'>): void {
-  if (particles.length < MAX_PARTICLES) particles.push({ ...particle, age: 0 });
+function goToSelect(note = ''): void {
+  selectNote = note;
+  if (location.hash === '' || location.hash === '#/') route();
+  else location.hash = '#/';
 }
 
-function burst(point: Position, count: number, speed: number): void {
-  if (reducedMotion.matches) return;
-  const colors = [PARTICLE_COLORS.crystal, PARTICLE_COLORS.white, PARTICLE_COLORS.spark];
-  for (let i = 0; i < count; i += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const velocity = speed * (0.3 + Math.random());
-    emit({
-      x: point.x,
-      y: point.y,
-      vx: Math.cos(angle) * velocity,
-      vy: Math.sin(angle) * velocity,
-      life: 0.4 + Math.random() * 0.7,
-      size: 0.018 + Math.random() * 0.03,
-      color: colors[i % colors.length] ?? PARTICLE_COLORS.white,
-    });
-  }
-}
-
-function setFocus(cell: Position | null): void {
-  focus = cell;
-  canvas.style.cursor = cell ? 'pointer' : 'default';
-  requestFrame();
-}
-
-function rotateAt(cell: Position): void {
-  if (solved || grid[cell.y]?.[cell.x]?.kind !== 'mirror') return;
-
-  steps += 1;
-
-  revealed = retractReveal(revealed, beam, center(cell));
-  grid = rotateMirror(grid, cell);
-  refreshTrace();
-
-  const key = cellKey(cell.x, cell.y);
-  mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
-  burst(center(cell), 6, 1.6);
-  if (solved) setFocus(null);
-  requestFrame();
-}
-
-function reset(): void {
-  grid = startGrid;
-  refreshTrace();
-  revealed = beamLengths(beam).map(() => 0);
-  delay = EMITTER_CHARGE_DELAY;
-  celebrated = false;
-  steps = 0;
-  flash = 0;
-  particles = [];
-  rings = [];
-  for (const cell of mirrorCells) {
-    const key = cellKey(cell.x, cell.y);
-    const current = mirrorGoals.get(key) ?? 0;
-    const isResting = Math.abs(Math.cos(current - restingAngle(startGrid, cell))) > 0.5;
-    if (!isResting) mirrorGoals.set(key, current + Math.PI / 2);
-  }
-  canvas.classList.remove('won');
-  requestFrame();
-}
-
-function isTargetLit(cell: Position): boolean {
-  return isReached(revealed, beam, center(cell));
-}
-
-function statusMessage(): string {
-  if (celebrated) return `过关！得 ${starsFor(steps, par)} 星`;
-  return '转动镜子，点亮全部水晶。';
-}
-
-/** 只在内容变化时才写 DOM，这个函数每帧都会调用。 */
-function updateHud(): void {
-  const litFlags = targets.map(isTargetLit);
-  const state = `${litFlags.join()}|${celebrated}|${steps}`;
-  if (state === hudState) return;
-  hudState = state;
-
-  const lit = litFlags.filter(Boolean).length;
-  litFlags.forEach((isLit, index) => pipElements[index]?.classList.toggle('lit', isLit));
-  pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
-  statusLine.textContent = statusMessage();
-  statusLine.classList.toggle('won', celebrated);
-
-  // 过关前显示按现在的步数还能拿几星，让玩家看到每多转一次的代价
-  const stars = starsFor(steps, par);
-  starElements.forEach((star, index) => star.classList.toggle('earned', index < stars));
-  stepCount.textContent = `步数 ${steps}`;
-  starRow.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
-  score.classList.toggle('won', celebrated);
-}
-
-function update(dt: number): void {
-  time += dt;
-  flash = Math.max(0, flash - dt * 1.5);
-
-  const lengths = beamLengths(beam);
-  if (reducedMotion.matches) {
-    revealed = lengths;
-    delay = 0;
-  } else if (delay > 0) {
-    delay -= dt;
+/** 去下一关；下一章星数不够时回选关页，并说明还差多少。 */
+function goAfter(level: Level): void {
+  const next = levelAfter(level);
+  if (!next) {
+    goToSelect('这是最后一关了。回去把星星拿满吧。');
+  } else if (isUnlocked(chapters, progress, next.id)) {
+    location.hash = `#/level/${next.id}`;
   } else {
-    revealed = lengths.map((length, id) => Math.min(length, (revealed[id] ?? 0) + BEAM_SPEED * dt));
+    const chapter = chapterOf(next);
+    const missing = chapter ? starsNeeded(chapter, progress) : 0;
+    goToSelect(`还差 ${missing} 星才能进入“${chapter?.name ?? ''}”。回到前面的关卡，少走几步就能多拿星。`);
   }
+}
 
-  const fullyRevealed = lengths.every((length, id) => (revealed[id] ?? 0) >= length);
-  for (const [key, goal] of mirrorGoals) {
-    const current = mirrorAngles.get(key) ?? goal;
-    const next = reducedMotion.matches ? goal : current + (goal - current) * (1 - Math.exp(-dt * MIRROR_TURN_RATE));
-    mirrorAngles.set(key, next);
-  }
+function showGame(level: Level): void {
+  selectScreen.hidden = true;
+  gameScreen.hidden = false;
+  game?.stop();
 
-  for (const cell of targets) {
-    const key = cellKey(cell.x, cell.y);
-    const before = charges.get(key) ?? 0;
-    const goal = isTargetLit(cell) ? 1 : 0;
-    const after = reducedMotion.matches ? goal : before + (goal - before) * (1 - Math.exp(-dt * 14));
-    charges.set(key, after);
-    if (goal === 1 && before < 0.05) burst(center(cell), 18, 2.4);
-  }
+  levelNumber.textContent = `第 ${allLevels.indexOf(level) + 1} 关`;
+  levelName.textContent = level.name;
+  document.title = `${level.name} | 激光反射`;
+  nextButton.hidden = true;
+  skipButton.hidden = false;
 
-  if (solved && fullyRevealed && !celebrated) {
-    celebrated = true;
-    flash = 1;
-    canvas.classList.add('won');
-    for (const cell of targets) {
-      const point = center(cell);
-      burst(point, 70, 5);
-      if (!reducedMotion.matches) rings.push({ ...point, age: 0, life: 0.9 });
-    }
-  }
-
-  if (!reducedMotion.matches) spawnBeamLife(dt);
-
-  particles = particles.filter((particle) => {
-    particle.age += dt;
-    particle.x += particle.vx * dt;
-    particle.y += particle.vy * dt;
-    particle.vx *= 1 - dt * 1.8;
-    particle.vy *= 1 - dt * 1.8;
-    return particle.age < particle.life;
-  });
-  rings = rings.filter((ring) => {
-    ring.age += dt;
-    return ring.age < ring.life;
+  game = startGame(level, ui, sound, (stars) => {
+    progress = recordWin(progress, level.id, stars);
+    saveProgress(storage, progress);
+    nextButton.hidden = false;
+    skipButton.hidden = true;
+    if (document.activeElement === canvas) nextButton.focus({ preventScroll: true });
   });
 
-  updateHud();
-}
-
-/** 光束里飘的尘埃，和碰到镜子、墙时溅出的火花。 */
-function spawnBeamLife(dt: number): void {
-  moteDebt += dt * 22;
-  while (moteDebt >= 1) {
-    moteDebt -= 1;
-    const segment = beam[Math.floor(Math.random() * beam.length)];
-    if (!segment || (revealed[segment.beamId] ?? 0) < segment.start + segment.length) continue;
-
-    const along = Math.random();
-    emit({
-      x: segment.from.x + (segment.to.x - segment.from.x) * along + (Math.random() - 0.5) * 0.12,
-      y: segment.from.y + (segment.to.y - segment.from.y) * along + (Math.random() - 0.5) * 0.12,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      life: 0.5 + Math.random() * 0.7,
-      size: 0.018,
-      color: PARTICLE_COLORS.white,
-    });
-
-    if (Math.random() < 0.4) {
-      const angle = Math.random() * Math.PI * 2;
-      emit({
-        x: segment.to.x,
-        y: segment.to.y,
-        vx: Math.cos(angle) * 2.2,
-        vy: Math.sin(angle) * 2.2,
-        life: 0.18 + Math.random() * 0.25,
-        size: 0.022,
-        color: PARTICLE_COLORS.spark,
-      });
-    }
-  }
-}
-
-let lastTimestamp: number | null = null;
-let frameRequested = false;
-
-/** 开了“减少动态效果”时画面不会自己变，只在有输入时才画一帧。 */
-function requestFrame(): void {
-  if (frameRequested) return;
-  frameRequested = true;
-  requestAnimationFrame(loop);
-}
-
-function loop(timestamp: number): void {
-  frameRequested = false;
-  const dt = lastTimestamp === null ? 0 : Math.min(0.05, Math.max(0, (timestamp - lastTimestamp) / 1000));
-  lastTimestamp = timestamp;
-  update(dt);
-  renderer.draw({
-    grid,
-    beam,
-    revealed,
-    time,
-    mirrorAngles,
-    charges,
-    focus,
-    flash,
-    won: celebrated,
-    particles,
-    rings,
-    still: reducedMotion.matches,
-  });
-  if (!reducedMotion.matches) requestFrame();
-}
-
-function cellFromEvent(event: MouseEvent): Position {
-  const bounds = canvas.getBoundingClientRect();
-  return renderer.cellAt((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height);
-}
-
-canvas.addEventListener('click', (event) => rotateAt(cellFromEvent(event)));
-
-// 只有真正的鼠标才有悬停；手指点一下不该留下高亮
-canvas.addEventListener('pointermove', (event) => {
-  if (event.pointerType !== 'mouse') return;
-  const cell = cellFromEvent(event);
-  setFocus(grid[cell.y]?.[cell.x]?.kind === 'mirror' && !solved ? cell : null);
-});
-
-canvas.addEventListener('pointerleave', () => setFocus(null));
-canvas.addEventListener('blur', () => setFocus(null));
-
-/** 方向键跳到那个方向上最近的镜子，回车或空格旋转。 */
-canvas.addEventListener('keydown', (event) => {
-  const steps: Record<string, Position> = {
-    ArrowUp: { x: 0, y: -1 },
-    ArrowDown: { x: 0, y: 1 },
-    ArrowLeft: { x: -1, y: 0 },
-    ArrowRight: { x: 1, y: 0 },
+  ui.restart.onclick = () => {
+    nextButton.hidden = true;
+    skipButton.hidden = false;
   };
-  const step = steps[event.key];
-
-  if (step) {
-    event.preventDefault();
-    if (solved) return;
-    const next = focus ? nextInDirection(mirrorCells, focus, step) : mirrorCells[0];
-    if (next) setFocus(next);
-  } else if ((event.key === 'Enter' || event.key === ' ') && focus) {
-    event.preventDefault();
-    rotateAt(focus);
-  }
-});
-
-canvas.addEventListener('focus', () => {
-  if (canvas.matches(':focus-visible') && !focus && !solved) setFocus(mirrorCells[0] ?? null);
-});
-
-restart.addEventListener('click', reset);
-
-function fitToScreen(): void {
-  const availableWidth = Math.min(window.innerWidth - 32, 760);
-  const availableHeight = Math.max(window.innerHeight - 200, 160);
-  const cssWidth = Math.floor(Math.min(availableWidth, availableHeight * renderer.aspectRatio));
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${Math.round(cssWidth / renderer.aspectRatio)}px`;
-  document.documentElement.style.setProperty('--board-width', `${cssWidth}px`);
-  renderer.resize(cssWidth, Math.min(window.devicePixelRatio || 1, 2));
-  requestFrame(); // 改尺寸会清空画布
+  nextButton.onclick = () => goAfter(level);
+  skipButton.onclick = () => {
+    progress = recordSkip(progress, level.id);
+    saveProgress(storage, progress);
+    goAfter(level);
+  };
 }
 
-window.addEventListener('resize', fitToScreen);
-reducedMotion.addEventListener('change', requestFrame);
-refreshTrace();
-reset();
-fitToScreen();
+function starMarks(stars: number): HTMLElement {
+  const row = document.createElement('span');
+  row.className = 'tile-stars';
+  for (let i = 0; i < 3; i += 1) {
+    const star = document.createElement('span');
+    star.className = i < stars ? 'mini-star earned' : 'mini-star';
+    row.append(star);
+  }
+  return row;
+}
+
+function levelTile(level: Level, nextLevel: Level | undefined): HTMLElement {
+  const unlocked = isUnlocked(chapters, progress, level.id);
+  const record = progress.levels[level.id];
+  const tile = document.createElement('button');
+  tile.type = 'button';
+  tile.className = 'tile';
+  tile.disabled = !unlocked;
+  tile.classList.toggle('next', level === nextLevel);
+
+  const number = document.createElement('span');
+  number.className = 'tile-number';
+  number.textContent = String(allLevels.indexOf(level) + 1);
+  const name = document.createElement('span');
+  name.className = 'tile-name';
+  name.textContent = level.name;
+  tile.append(number, name, starMarks(record?.stars ?? 0));
+
+  const state = !unlocked ? '未解锁' : record ? (record.stars === 0 ? '已跳过' : `${record.stars} 星`) : '未玩';
+  tile.setAttribute('aria-label', `第 ${number.textContent} 关 ${level.name}，${state}`);
+  if (unlocked) tile.addEventListener('click', () => { location.hash = `#/level/${level.id}`; });
+  return tile;
+}
+
+function renderSelect(): void {
+  const next = nextToPlay(chapters, progress);
+
+  requireElement('#total-stars').textContent = `${totalStars(progress)} / ${MAX_STARS}`;
+  requireElement('#select-note').textContent = selectNote;
+
+  const resume = requireElement<HTMLButtonElement>('#resume');
+  resume.hidden = !next;
+  if (next) {
+    const index = allLevels.indexOf(next) + 1;
+    resume.textContent = Object.keys(progress.levels).length === 0 ? '开始' : `继续第 ${index} 关`;
+    resume.onclick = () => { location.hash = `#/level/${next.id}`; };
+  }
+
+  requireElement('#chapters').replaceChildren(
+    ...chapters.map((chapter, index) => {
+      const section = document.createElement('section');
+      section.className = 'chapter';
+
+      const heading = document.createElement('h2');
+      heading.textContent = `第 ${index + 1} 章：${chapter.name}`;
+      const header = document.createElement('div');
+      header.className = 'chapter-header';
+      header.append(heading);
+
+      const missing = starsNeeded(chapter, progress);
+      if (missing > 0) {
+        const gate = document.createElement('span');
+        gate.className = 'gate';
+        gate.textContent = `还差 ${missing} 星解锁`;
+        header.append(gate);
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'tiles';
+      grid.append(...chapter.levels.map((level) => levelTile(level, next)));
+
+      section.append(header, grid);
+      return section;
+    }),
+  );
+}
+
+function showSelect(): void {
+  game?.stop();
+  game = null;
+  gameScreen.hidden = true;
+  selectScreen.hidden = false;
+  document.title = '激光反射';
+  renderSelect();
+  selectNote = '';
+  window.scrollTo(0, 0);
+}
+
+function route(): void {
+  const id = /^#\/level\/(.+)$/.exec(location.hash)?.[1];
+  const level = allLevels.find((candidate) => candidate.id === id);
+  if (level && isUnlocked(chapters, progress, level.id)) showGame(level);
+  else showSelect();
+}
+
+const muteButtons = document.querySelectorAll<HTMLButtonElement>('.mute');
+
+function refreshMuteButtons(): void {
+  muteButtons.forEach((button) => {
+    button.textContent = sound.isMuted() ? '音效：关' : '音效：开';
+    button.setAttribute('aria-pressed', String(!sound.isMuted()));
+  });
+}
+
+muteButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    sound.setMuted(!sound.isMuted());
+    refreshMuteButtons();
+  });
+});
+
+backButton.addEventListener('click', () => goToSelect());
+window.addEventListener('hashchange', route);
+refreshMuteButtons();
+route();

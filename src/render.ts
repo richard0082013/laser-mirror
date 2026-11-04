@@ -1,16 +1,26 @@
-import type { MeasuredSegment } from './beam';
-import type { Direction, Grid, Position } from './laser';
+import type { BeamColor, Direction, Grid, Position, Segment, TargetColor } from './laser';
 
 /** 外圈的墙只露出这么多，把画面留给台面。单位是格子。 */
 const VISIBLE_BORDER = 0.38;
 const BORDER_CROP = 1 - VISIBLE_BORDER;
 
-type Rgb = readonly [number, number, number];
+export type Rgb = readonly [number, number, number];
 
-const BEAM: Rgb = [255, 38, 96];
-const BEAM_CORE: Rgb = [255, 238, 242];
-const CRYSTAL: Rgb = [70, 240, 255];
+const WHITE: Rgb = [255, 255, 255];
+const FOCUS: Rgb = [70, 240, 255];
 const SPARK: Rgb = [255, 190, 150];
+
+const BEAM_COLORS: Record<BeamColor, { glow: Rgb; core: Rgb }> = {
+  red: { glow: [255, 38, 96], core: [255, 238, 242] },
+  blue: { glow: [48, 130, 255], core: [226, 240, 255] },
+};
+
+export const CRYSTAL_COLORS: Record<TargetColor, Rgb> = {
+  any: [70, 240, 255],
+  red: [255, 84, 128],
+  blue: [84, 156, 255],
+  both: [200, 112, 255],
+};
 
 export type Particle = {
   x: number;
@@ -23,18 +33,20 @@ export type Particle = {
   color: Rgb;
 };
 
-export type Ring = { x: number; y: number; age: number; life: number };
+export type Ring = { x: number; y: number; age: number; life: number; color: Rgb };
 
-export const PARTICLE_COLORS = { beam: BEAM, spark: SPARK, crystal: CRYSTAL, white: BEAM_CORE };
+export const PARTICLE_COLORS = { spark: SPARK, white: WHITE };
 
 export type Frame = {
   grid: Grid;
-  beam: readonly MeasuredSegment[];
+  beam: readonly Segment[];
   revealed: readonly number[];
   time: number;
   mirrorAngles: ReadonlyMap<string, number>;
   charges: ReadonlyMap<string, number>;
   focus: Position | null;
+  /** 还能放镜子时，鼠标停在空地上会显示一面半透明的镜子。 */
+  canPlace: boolean;
   flash: number;
   won: boolean;
   particles: readonly Particle[];
@@ -142,23 +154,66 @@ function drawWalls(ctx: CanvasRenderingContext2D, grid: Grid, cellPixels: number
   }));
 }
 
-function drawMirror(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, focused: boolean): void {
-  const cx = x + 0.5;
-  const cy = y + 0.5;
+function drawFilters(ctx: CanvasRenderingContext2D, grid: Grid): void {
+  grid.forEach((row, y) => row.forEach((cell, x) => {
+    if (cell.kind !== 'filter') return;
+    const color = BEAM_COLORS[cell.color].glow;
+
+    ctx.fillStyle = 'rgba(2, 2, 20, 0.45)';
+    ctx.fillRect(x + 0.12, y + 0.16, 0.76, 0.76);
+
+    const pane = ctx.createLinearGradient(x + 0.12, y + 0.12, x + 0.88, y + 0.88);
+    pane.addColorStop(0, rgba(mix(color, WHITE, 0.25), 0.7));
+    pane.addColorStop(0.5, rgba(color, 0.32));
+    pane.addColorStop(1, rgba(color, 0.55));
+    ctx.fillStyle = pane;
+    ctx.fillRect(x + 0.12, y + 0.12, 0.76, 0.76);
+
+    ctx.strokeStyle = '#b9bfe6';
+    ctx.lineWidth = 0.045;
+    ctx.strokeRect(x + 0.12, y + 0.12, 0.76, 0.76);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.lineWidth = 0.03;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.26, y + 0.5);
+    ctx.lineTo(x + 0.5, y + 0.26);
+    ctx.moveTo(x + 0.42, y + 0.66);
+    ctx.lineTo(x + 0.66, y + 0.42);
+    ctx.stroke();
+  }));
+}
+
+type MirrorStyle = 'fixed' | 'placed' | 'splitter';
+
+const RING_COLORS: Record<MirrorStyle, readonly [string, string, string]> = {
+  fixed: ['#ffd98a', '#c08a3a', '#7a5220'],
+  placed: ['#d9fbff', '#6fc6d8', '#2c6f86'],
+  splitter: ['#f0d6ff', '#a97ad6', '#5a3a8a'],
+};
+
+function drawMirror(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  style: MirrorStyle,
+): void {
+  const [ringLight, ringMid, ringDark] = RING_COLORS[style];
 
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(x + 0.5, y + 0.5);
 
   ctx.fillStyle = 'rgba(2, 2, 20, 0.5)';
   ctx.beginPath();
   ctx.arc(0, 0.05, 0.43, 0, Math.PI * 2);
   ctx.fill();
 
-  const brass = ctx.createLinearGradient(-0.4, -0.4, 0.4, 0.4);
-  brass.addColorStop(0, '#ffd98a');
-  brass.addColorStop(0.5, '#c08a3a');
-  brass.addColorStop(1, '#7a5220');
-  ctx.fillStyle = brass;
+  const ring = ctx.createLinearGradient(-0.4, -0.4, 0.4, 0.4);
+  ring.addColorStop(0, ringLight);
+  ring.addColorStop(0.5, ringMid);
+  ring.addColorStop(1, ringDark);
+  ctx.fillStyle = ring;
   ctx.beginPath();
   ctx.arc(0, 0, 0.41, 0, Math.PI * 2);
   ctx.fill();
@@ -168,39 +223,40 @@ function drawMirror(ctx: CanvasRenderingContext2D, x: number, y: number, angle: 
   ctx.arc(0, 0, 0.35, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#4a3214';
-  for (let i = 0; i < 4; i += 1) {
-    const a = (i * Math.PI) / 2;
-    ctx.beginPath();
-    ctx.arc(Math.cos(a) * 0.38, Math.sin(a) * 0.38, 0.014, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   ctx.rotate(angle);
   const glass = ctx.createLinearGradient(0, -0.07, 0, 0.07);
-  glass.addColorStop(0, '#ffffff');
-  glass.addColorStop(0.45, '#b5ecff');
-  glass.addColorStop(1, '#3f86b5');
+  if (style === 'splitter') {
+    glass.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    glass.addColorStop(0.5, 'rgba(214, 180, 255, 0.45)');
+    glass.addColorStop(1, 'rgba(120, 80, 200, 0.75)');
+  } else {
+    glass.addColorStop(0, '#ffffff');
+    glass.addColorStop(0.45, '#b5ecff');
+    glass.addColorStop(1, '#3f86b5');
+  }
   ctx.fillStyle = glass;
   ctx.fillRect(-0.37, -0.07, 0.74, 0.14);
-  ctx.fillStyle = '#e9b860';
+  ctx.fillStyle = ringMid;
   ctx.fillRect(-0.41, -0.09, 0.07, 0.18);
   ctx.fillRect(0.34, -0.09, 0.07, 0.18);
   ctx.restore();
-
-  if (focused) {
-    ctx.strokeStyle = rgba(CRYSTAL, 0.95);
-    ctx.lineWidth = 0.035;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 0.46, 0, Math.PI * 2);
-    ctx.stroke();
-  }
 }
 
-function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, charge: number): void {
+function drawFocusRing(ctx: CanvasRenderingContext2D, { x, y }: Position): void {
+  ctx.strokeStyle = rgba(FOCUS, 0.95);
+  ctx.lineWidth = 0.035;
+  ctx.beginPath();
+  ctx.arc(x + 0.5, y + 0.5, 0.46, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+const FACET_SHADES = [1, 0.74, 0.5, 0.38, 0.58, 0.86];
+
+function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, required: TargetColor, charge: number): void {
   const cx = x + 0.5;
   const cy = y + 0.5;
   const radius = 0.3;
+  const color = CRYSTAL_COLORS[required];
 
   ctx.fillStyle = '#10113a';
   ctx.beginPath();
@@ -210,25 +266,19 @@ function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, charge
   ctx.lineWidth = 0.03;
   ctx.stroke();
 
-  const dimShades: readonly Rgb[] = [
-    [62, 120, 150], [44, 92, 124], [30, 68, 100], [24, 54, 84], [34, 76, 108], [50, 104, 136],
-  ];
-  const litShades: readonly Rgb[] = [
-    [255, 255, 255], [190, 252, 255], [110, 240, 255], [70, 215, 245], [130, 244, 255], [215, 254, 255],
-  ];
-
-  for (let i = 0; i < 6; i += 1) {
+  FACET_SHADES.forEach((shade, i) => {
     const a1 = -Math.PI / 2 + (i * Math.PI) / 3;
     const a2 = a1 + Math.PI / 3;
-    const color = mix(dimShades[i] ?? [0, 0, 0], litShades[i] ?? [0, 0, 0], charge);
-    ctx.fillStyle = rgba(color, 1);
+    const dim = mix([16, 18, 50], color, shade * 0.55);
+    const lit = mix(color, WHITE, shade * 0.85);
+    ctx.fillStyle = rgba(mix(dim, lit, charge), 1);
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(a1) * radius, cy + Math.sin(a1) * radius);
     ctx.lineTo(cx + Math.cos(a2) * radius, cy + Math.sin(a2) * radius);
     ctx.closePath();
     ctx.fill();
-  }
+  });
 }
 
 const EMITTER_ANGLES: Record<Direction, number> = {
@@ -252,7 +302,7 @@ function drawEmitterShadows(ctx: CanvasRenderingContext2D, grid: Grid): void {
   }));
 }
 
-function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direction: Direction): void {
+function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direction: Direction, color: BeamColor): void {
   ctx.save();
   ctx.translate(x + 0.5, y + 0.5);
   ctx.rotate(EMITTER_ANGLES[direction]);
@@ -267,10 +317,12 @@ function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direct
   ctx.fillStyle = 'rgba(10, 10, 40, 0.55)';
   for (const stripe of [-0.32, -0.22, -0.12]) ctx.fillRect(stripe, -0.3, 0.035, 0.6);
 
+  // 枪管的颜色和光一样，开局就能看出谁是红谁是蓝
+  const tint = BEAM_COLORS[color].glow;
   const barrel = ctx.createLinearGradient(0, -0.15, 0, 0.15);
-  barrel.addColorStop(0, '#ffe2a0');
-  barrel.addColorStop(0.5, '#c08a3a');
-  barrel.addColorStop(1, '#6e481c');
+  barrel.addColorStop(0, rgba(mix(tint, WHITE, 0.6), 1));
+  barrel.addColorStop(0.5, rgba(tint, 1));
+  barrel.addColorStop(1, rgba(mix(tint, [10, 10, 40], 0.6), 1));
   ctx.fillStyle = barrel;
   ctx.fillRect(0.26, -0.15, 0.2, 0.3);
   ctx.restore();
@@ -284,15 +336,9 @@ function drawBeamHaze(
   from: Position,
   to: Position,
   radius: number,
+  color: Rgb,
   alpha: number,
 ): void {
-  const addStops = (gradient: CanvasGradient, offsets: readonly number[]) => {
-    const falloff = [1, 0.62, 0.3, 0.1, 0];
-    offsets.forEach((offset, index) => {
-      gradient.addColorStop(offset, rgba(BEAM, alpha * (falloff[index] ?? 0)));
-    });
-  };
-
   const length = Math.hypot(to.x - from.x, to.y - from.y);
   if (length === 0) return;
   const dirX = (to.x - from.x) / length;
@@ -300,11 +346,10 @@ function drawBeamHaze(
   const sideX = -dirY * radius;
   const sideY = dirX * radius;
 
-  const band = ctx.createLinearGradient(from.x - sideX, from.y - sideY, from.x + sideX, from.y + sideY);
-  const bandStops = [0, 0.12, 0.27, 0.42, 0.5];
   const falloff = [0, 0.1, 0.3, 0.62, 1];
-  bandStops.forEach((offset, index) => {
-    const value = rgba(BEAM, alpha * (falloff[index] ?? 0));
+  const band = ctx.createLinearGradient(from.x - sideX, from.y - sideY, from.x + sideX, from.y + sideY);
+  [0, 0.12, 0.27, 0.42, 0.5].forEach((offset, index) => {
+    const value = rgba(color, alpha * (falloff[index] ?? 0));
     band.addColorStop(offset, value);
     band.addColorStop(1 - offset, value);
   });
@@ -321,7 +366,9 @@ function drawBeamHaze(
   const angle = Math.atan2(dirY, dirX);
   for (const [point, startAngle] of [[to, angle - Math.PI / 2], [from, angle + Math.PI / 2]] as const) {
     const cap = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
-    addStops(cap, [0, 0.16, 0.46, 0.76, 1]);
+    [1, 0.62, 0.3, 0.1, 0].forEach((value, index) => {
+      cap.addColorStop([0, 0.16, 0.46, 0.76, 1][index] ?? 1, rgba(color, alpha * value));
+    });
     ctx.fillStyle = cap;
     ctx.beginPath();
     ctx.arc(point.x, point.y, radius, startAngle, startAngle + Math.PI);
@@ -330,48 +377,55 @@ function drawBeamHaze(
   }
 }
 
+function shownEnd({ from, to, emitter, start, length }: Segment, revealed: readonly number[]): Position | null {
+  const shown = Math.min(1, ((revealed[emitter] ?? 0) - start) / length);
+  if (shown <= 0) return null;
+  return { x: from.x + (to.x - from.x) * shown, y: from.y + (to.y - from.y) * shown };
+}
+
 function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
   const { beam, revealed, time, flash, still } = frame;
   const flicker = still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13);
   const boost = 1 + flash * 0.8;
 
-  const shownEnd = ({ from, to, beamId, start, length }: MeasuredSegment): Position | null => {
-    const shown = Math.min(1, ((revealed[beamId] ?? 0) - start) / length);
-    if (shown <= 0) return null;
-    return { x: from.x + (to.x - from.x) * shown, y: from.y + (to.y - from.y) * shown };
-  };
-
   for (const segment of beam) {
-    const end = shownEnd(segment);
-    if (end) drawBeamHaze(ctx, segment.from, end, HAZE_RADIUS * boost, 0.3 * flicker);
+    const end = shownEnd(segment, revealed);
+    if (end) {
+      drawBeamHaze(ctx, segment.from, end, HAZE_RADIUS * boost, BEAM_COLORS[segment.color].glow, 0.3 * flicker);
+    }
   }
 
-  const stroke = (style: string, width: number, dash?: readonly [number, number]) => {
-    ctx.strokeStyle = style;
-    ctx.lineWidth = width;
-    ctx.setLineDash(dash ? [...dash] : []);
-    ctx.lineDashOffset = dash ? -time * 7 : 0;
-    ctx.lineCap = dash ? 'butt' : 'round';
-    ctx.beginPath();
-    for (const segment of beam) {
-      const end = shownEnd(segment);
-      if (!end) continue;
-      ctx.moveTo(segment.from.x, segment.from.y);
-      ctx.lineTo(end.x, end.y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-  };
+  for (const color of ['red', 'blue'] as const) {
+    const { glow: glowColor, core } = BEAM_COLORS[color];
+    const segments = beam.filter((segment) => segment.color === color);
 
-  stroke(rgba(BEAM, 0.75 * flicker), 0.11 * boost);
-  stroke(rgba(BEAM_CORE, 1), 0.06 * boost);
-  if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
+    const stroke = (style: string, width: number, dash?: readonly [number, number]) => {
+      ctx.strokeStyle = style;
+      ctx.lineWidth = width;
+      ctx.setLineDash(dash ? [...dash] : []);
+      ctx.lineDashOffset = dash ? -time * 7 : 0;
+      ctx.lineCap = dash ? 'butt' : 'round';
+      ctx.beginPath();
+      for (const segment of segments) {
+        const end = shownEnd(segment, revealed);
+        if (!end) continue;
+        ctx.moveTo(segment.from.x, segment.from.y);
+        ctx.lineTo(end.x, end.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
 
-  for (const { to, beamId, start, length } of beam) {
-    if ((revealed[beamId] ?? 0) < start + length) continue;
+    stroke(rgba(glowColor, 0.75 * flicker), 0.11 * boost);
+    stroke(rgba(core, 1), 0.06 * boost);
+    if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
+  }
+
+  for (const { to, emitter, start, length, color } of beam) {
+    if ((revealed[emitter] ?? 0) < start + length) continue;
     const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 9 + to.x * 3 + to.y * 5);
-    glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM, 0.3);
-    glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, 1);
+    glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM_COLORS[color].glow, 0.3);
+    glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_COLORS[color].core, 1);
   }
 }
 
@@ -381,18 +435,19 @@ function drawCrystalLight(ctx: CanvasRenderingContext2D, frame: Frame): void {
   grid.forEach((row, y) => row.forEach((cell, x) => {
     if (cell.kind !== 'target') return;
     const charge = charges.get(cellKey(x, y)) ?? 0;
+    const color = CRYSTAL_COLORS[cell.color];
     const cx = x + 0.5;
     const cy = y + 0.5;
     const breathe = still ? 0.5 : 0.5 + 0.5 * Math.sin(time * 2.2);
 
-    glow(ctx, cx, cy, 0.62, CRYSTAL, 0.1 + 0.08 * breathe);
+    glow(ctx, cx, cy, 0.62, color, 0.1 + 0.08 * breathe);
     if (charge <= 0.01) return;
 
     const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 6 + x);
-    glow(ctx, cx, cy, 1.25 * pulse, CRYSTAL, 0.32 * charge);
-    glow(ctx, cx, cy, 0.14, BEAM_CORE, 0.8 * charge);
+    glow(ctx, cx, cy, 1.25 * pulse, color, 0.32 * charge);
+    glow(ctx, cx, cy, 0.14, WHITE, 0.8 * charge);
 
-    ctx.strokeStyle = rgba(CRYSTAL, 0.95 * charge);
+    ctx.strokeStyle = rgba(color, 0.95 * charge);
     ctx.lineWidth = 0.035;
     ctx.lineCap = 'round';
     const spin = still ? 0 : time * 1.6;
@@ -417,9 +472,9 @@ function drawEffects(ctx: CanvasRenderingContext2D, frame: Frame): void {
     ctx.stroke();
   }
 
-  for (const { x, y, age, life } of frame.rings) {
+  for (const { x, y, age, life, color } of frame.rings) {
     const progress = age / life;
-    ctx.strokeStyle = rgba(CRYSTAL, (1 - progress) * 0.9);
+    ctx.strokeStyle = rgba(color, (1 - progress) * 0.9);
     ctx.lineWidth = 0.14 * (1 - progress) + 0.01;
     ctx.beginPath();
     ctx.arc(x, y, 0.3 + progress * 4.2, 0, Math.PI * 2);
@@ -430,7 +485,7 @@ function drawEffects(ctx: CanvasRenderingContext2D, frame: Frame): void {
     const rows = frame.grid.length;
     const columns = frame.grid[0]?.length ?? 0;
     const pulse = frame.still ? 0.7 : 0.55 + 0.25 * Math.sin(frame.time * 3);
-    ctx.strokeStyle = rgba(CRYSTAL, Math.min(1, pulse + frame.flash));
+    ctx.strokeStyle = rgba(CRYSTAL_COLORS.any, Math.min(1, pulse + frame.flash));
     ctx.lineWidth = 0.05;
     ctx.strokeRect(1, 1, columns - 2, rows - 2);
   }
@@ -445,9 +500,9 @@ export type Renderer = {
   aspectRatio: number;
 };
 
-export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer {
-  const rows = walls.length;
-  const columns = walls[0]?.length ?? 0;
+export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer {
+  const rows = start.length;
+  const columns = start[0]?.length ?? 0;
   const viewWidth = columns - BORDER_CROP * 2;
   const viewHeight = rows - BORDER_CROP * 2;
 
@@ -493,8 +548,9 @@ export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer
       const backgroundCtx = context(background);
       useCellUnits(backgroundCtx);
       drawTable(backgroundCtx, columns, rows);
-      drawWalls(backgroundCtx, walls, cellPixels);
-      drawEmitterShadows(backgroundCtx, walls);
+      drawWalls(backgroundCtx, start, cellPixels);
+      drawFilters(backgroundCtx, start);
+      drawEmitterShadows(backgroundCtx, start);
     },
 
     draw(frame) {
@@ -506,12 +562,22 @@ export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer
 
       useCellUnits(main);
       frame.grid.forEach((row, y) => row.forEach((cell, x) => {
-        if (cell.kind === 'target') drawCrystal(main, x, y, frame.charges.get(cellKey(x, y)) ?? 0);
-        if (cell.kind === 'mirror') {
-          const focused = frame.focus?.x === x && frame.focus.y === y;
-          drawMirror(main, x, y, frame.mirrorAngles.get(cellKey(x, y)) ?? 0, focused);
-        }
+        const angle = frame.mirrorAngles.get(cellKey(x, y)) ?? 0;
+        if (cell.kind === 'target') drawCrystal(main, x, y, cell.color, frame.charges.get(cellKey(x, y)) ?? 0);
+        if (cell.kind === 'mirror') drawMirror(main, x, y, angle, cell.placed ? 'placed' : 'fixed');
+        if (cell.kind === 'splitter') drawMirror(main, x, y, angle, 'splitter');
       }));
+
+      if (frame.focus) {
+        const focused = frame.grid[frame.focus.y]?.[frame.focus.x];
+        if (focused?.kind === 'empty' && frame.canPlace) {
+          main.save();
+          main.globalAlpha = 0.45;
+          drawMirror(main, frame.focus.x, frame.focus.y, -Math.PI / 4, 'placed');
+          main.restore();
+        }
+        drawFocusRing(main, frame.focus);
+      }
 
       emissionCtx.setTransform(1, 0, 0, 1, 0, 0);
       emissionCtx.clearRect(0, 0, width, height);
@@ -541,8 +607,7 @@ export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer
 
       useCellUnits(main);
       frame.grid.forEach((row, y) => row.forEach((cell, x) => {
-        if (cell.kind !== 'emitter') return;
-        drawEmitter(main, x, y, cell.direction);
+        if (cell.kind === 'emitter') drawEmitter(main, x, y, cell.direction, cell.color);
       }));
     },
   };

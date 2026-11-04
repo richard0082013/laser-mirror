@@ -1,4 +1,4 @@
-@import '@fontsource/zcool-qingke-huangyou/400.css';
+@import './fonts.css';
 
 :root {
   --page-top: #221d55;
@@ -10,10 +10,16 @@
   --pip-off: #8a90d0;
   --star: #ffe46b;
   --star-off: #4a4c8c;
+  --tile: rgba(255, 255, 255, 0.05);
+  --display: 'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
 }
 
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 body {
@@ -24,22 +30,211 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background: radial-gradient(120% 90% at 50% 35%, var(--page-top), var(--page-bottom));
+  background: radial-gradient(120% 90% at 50% 35%, var(--page-top), var(--page-bottom)) fixed;
   color: var(--text);
   font-family: 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--crystal);
+  outline-offset: 2px;
+}
+
+/* 选关页 */
+
+#select-screen {
+  width: min(100%, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-block: 8px;
+}
+
+.hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.game-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(3rem, 14vw, 5.5rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.03em;
+}
+
+/* 标题下面这道光是选关页唯一的装饰，开场时射出一次 */
+.hero-beam {
+  height: 4px;
+  margin-block: 14px 16px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #fff 0%, #ffd9e4 8%, var(--beam) 55%, rgba(255, 38, 96, 0));
+  box-shadow: 0 0 18px 3px rgba(255, 38, 96, 0.65);
+  transform-origin: left center;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.hero-actions {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.total {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#select-note {
+  margin: 14px 0 0;
+  color: var(--star);
+  line-height: 1.6;
+}
+
+#select-note:empty {
+  display: none;
+}
+
+.chapter-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.chapter + .chapter {
+  margin-top: 24px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.gate {
+  color: var(--star);
+  font-size: 0.875rem;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  min-height: 92px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid rgba(170, 176, 220, 0.28);
+  border-radius: 8px;
+  background: var(--tile);
+  text-align: left;
+}
+
+.tile:hover:not(:disabled) {
+  border-color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tile:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.tile.next {
+  border-color: var(--crystal);
+  box-shadow: 0 0 16px rgba(70, 240, 255, 0.35);
+}
+
+.tile-number {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  line-height: 1.1;
+}
+
+.tile-name {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.tile-stars {
+  margin-top: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.mini-star,
+.star {
+  display: inline-block;
+  background: var(--star-off);
+  clip-path: polygon(50% 2%, 62% 36%, 98% 37%, 69% 58%, 79% 94%, 50% 73%, 21% 94%, 31% 58%, 2% 37%, 38% 36%);
+}
+
+.mini-star {
+  width: 13px;
+  height: 13px;
+}
+
+.star {
+  width: 24px;
+  height: 24px;
+  transition: background-color 200ms ease-out;
+}
+
+.mini-star.earned,
+.star.earned {
+  background: var(--star);
+}
+
+/* 关卡页 */
+
+#game-screen {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
 #hud,
+#score,
+#status,
 #footer {
-  width: min(100%, var(--board-width, 100%));
+  width: min(100%, 760px);
+}
+
+#hud {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-h1 {
+#hud h1 {
   margin: 0;
   display: flex;
   align-items: baseline;
@@ -49,7 +244,7 @@ h1 {
 
 /* 这个字体笔画细密，只用来写大字号的短词；关卡名要读得清，用系统字体 */
 #level-number {
-  font-family: 'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
+  font-family: var(--display);
   font-size: clamp(1.875rem, 6vw, 2.5rem);
   font-weight: 400;
   letter-spacing: 0.02em;
@@ -84,6 +279,7 @@ h1 {
   display: block;
   border-radius: 6px;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   box-shadow: 0 18px 60px rgba(4, 4, 30, 0.75), 0 0 70px rgba(255, 38, 96, 0.14);
   transition: box-shadow 400ms ease-out;
 }
@@ -98,10 +294,11 @@ h1 {
 }
 
 #score {
-  width: min(100%, var(--board-width, 100%));
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  column-gap: 12px;
+  row-gap: 4px;
   color: var(--muted);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
@@ -112,26 +309,23 @@ h1 {
   font-weight: 600;
 }
 
+#inventory-note {
+  color: var(--crystal);
+}
+
+#inventory-note:empty {
+  display: none;
+}
+
 #stars {
   margin-left: auto;
   display: flex;
   gap: 4px;
 }
 
-.star {
-  width: 24px;
-  height: 24px;
-  background: var(--star-off);
-  clip-path: polygon(50% 2%, 62% 36%, 98% 37%, 69% 58%, 79% 94%, 50% 73%, 21% 94%, 31% 58%, 2% 37%, 38% 36%);
-  transition: background-color 200ms ease-out;
-}
-
-.star.earned {
-  background: var(--star);
-}
-
 #status {
   margin: 0;
+  min-height: 3em;
   color: var(--muted);
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -139,36 +333,60 @@ h1 {
 
 #status.won {
   color: var(--crystal);
-  font-family: 'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
-  font-size: 1.625rem;
-  line-height: 1.15;
+  font-family: var(--display);
+  font-size: 1.75rem;
+  line-height: 1.5;
   text-shadow: 0 0 18px rgba(70, 240, 255, 0.8);
 }
 
-#restart {
-  flex-shrink: 0;
+#footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+#footer button,
+.small-button,
+#resume {
   min-height: 44px;
-  padding: 8px 18px;
+  padding: 8px 14px;
   border: 1px solid rgba(170, 176, 220, 0.55);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
-  font: inherit;
   font-size: 0.9375rem;
-  cursor: pointer;
+  white-space: nowrap;
 }
 
-#restart:hover {
+#footer button:hover,
+.small-button:hover {
   border-color: var(--text);
   background: rgba(255, 255, 255, 0.1);
 }
 
-#restart:focus-visible {
-  outline: 3px solid var(--crystal);
-  outline-offset: 2px;
+#footer button.primary,
+#resume.primary {
+  border-color: var(--crystal);
+  background: var(--crystal);
+  color: #07203a;
+  font-weight: 600;
+}
+
+#footer button.primary:hover,
+#resume.primary:hover {
+  border-color: #9df7ff;
+  background: #9df7ff;
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .hero-beam {
+    animation: beam-out 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
   #score.won .star.earned {
     animation: star-pop 420ms cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
   }
@@ -183,6 +401,12 @@ h1 {
 
   #status.won {
     animation: win-pop 420ms cubic-bezier(0.2, 1.5, 0.4, 1);
+  }
+}
+
+@keyframes beam-out {
+  from {
+    transform: scaleX(0);
   }
 }
 

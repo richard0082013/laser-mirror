@@ -4,28 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#221d55" />
+    <meta name="description" content="转动镜子，把激光引到每一颗水晶上。" />
     <title>激光反射</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header id="hud">
-      <h1><span id="level-number"></span><span id="level-name"></span></h1>
-      <div id="pips" role="img"></div>
-    </header>
-    <canvas
-      id="board"
-      tabindex="0"
-      aria-label="激光反射棋盘。方向键选择镜子，回车或空格旋转。"
-    ></canvas>
-    <div id="score">
-      <span id="step-count"></span>
-      <span id="par-note"></span>
-      <span id="stars" role="img"></span>
-    </div>
-    <footer id="footer">
+    <main id="select-screen" hidden>
+      <header class="hero">
+        <div class="hero-top">
+          <h1 class="game-title">激光反射</h1>
+          <button class="mute small-button" type="button"></button>
+        </div>
+        <div class="hero-beam" aria-hidden="true"></div>
+        <p class="tagline">转动镜子，把激光引到每一颗水晶上。</p>
+        <div class="hero-actions">
+          <button id="resume" class="primary" type="button"></button>
+          <span class="total"><span class="star earned" aria-hidden="true"></span><span id="total-stars"></span></span>
+        </div>
+        <p id="select-note" role="status"></p>
+      </header>
+      <div id="chapters"></div>
+    </main>
+
+    <main id="game-screen" hidden>
+      <header id="hud">
+        <h1><span id="level-number"></span><span id="level-name"></span></h1>
+        <div id="pips" role="img"></div>
+      </header>
+      <canvas
+        id="board"
+        tabindex="0"
+        aria-label="激光反射棋盘。方向键选择格子，回车或空格操作。"
+      ></canvas>
+      <div id="score">
+        <span id="step-count"></span>
+        <span id="par-note"></span>
+        <span id="inventory-note"></span>
+        <span id="stars" role="img"></span>
+      </div>
       <p id="status" role="status"></p>
-      <button id="restart" type="button">重新开始</button>
-    </footer>
+      <footer id="footer">
+        <button id="back" class="small-button" type="button">选关</button>
+        <button class="mute small-button" type="button"></button>
+        <span class="spacer"></span>
+        <button id="restart" type="button">重新开始</button>
+        <button id="skip" type="button">跳过这关</button>
+        <button id="next" class="primary" type="button" hidden>下一关</button>
+      </footer>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
