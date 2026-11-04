@@ -1,0 +1,80 @@
+:root {
+  --page: #131d36;
+  --text: #e8e2d0;
+  --muted: #a3afc8;
+  --laser: #ff2a6d;
+  --gold: #ffe46b;
+  --wall: #5b6c8f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--page);
+  color: var(--text);
+  font-family: 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+#hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+#board {
+  display: block;
+  image-rendering: pixelated;
+  touch-action: manipulation;
+  outline: 4px solid var(--wall);
+}
+
+#board.solved {
+  outline-color: var(--gold);
+}
+
+#status {
+  margin: 0;
+  min-height: 1.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+#status.solved {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+#restart {
+  min-height: 44px;
+  padding: 8px 20px;
+  border: 2px solid var(--muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+#restart:hover {
+  border-color: var(--text);
+}
+
+#restart:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
