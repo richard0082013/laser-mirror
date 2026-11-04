@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:single": "npm run build && node scripts/make-single-file.mjs"
+    "build:single": "npm run build && node scripts/make-single-file.mjs",
+    "gen:daily": "vite build --ssr scripts/generate-daily.ts --outDir node_modules/.cache/gen --logLevel warn && node node_modules/.cache/gen/generate-daily.js"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

@@ -1,6 +1,6 @@
 # 激光反射
 
-转动镜子，把激光引到每一颗水晶上。共 4 章 16 关，手机和电脑都能玩。
+转动镜子，把激光引到每一颗水晶上。共 4 章 16 关，另有每日一题，手机和电脑都能玩。
 
 ## 运行和检查
 
@@ -24,3 +24,7 @@ npm run build
 
 在 `src/levels.ts` 里加一个对象，地图符号见 `src/laser.ts` 的 `parseGrid`。
 `par` 要等于真正的最少步数，填错时 `npm test` 会报出来。
+
+## 加每日题
+
+`npm run gen:daily` 输出候选地图（JSON），挑好后放进 `src/dailyLevels.ts`。题库按日期循环，`npm test` 会核对每道题的 `par`。

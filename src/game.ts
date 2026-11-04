@@ -14,7 +14,8 @@ import {
 import type { Level } from './levels';
 import { nextInDirection } from './navigation';
 import { createFrameMonitor } from './quality';
-import { cellKey, createRenderer, CRYSTAL_COLORS, PARTICLE_COLORS, type Particle, type Rgb, type Ring } from './render';
+import type { SkinId } from './economy';
+import { cellKey, createRenderer, CRYSTAL_COLORS, PARTICLE_COLORS, type Particle, type Rgb, type Ring, skinSpark } from './render';
 import { solve, starsFor } from './scoring';
 import type { Sound } from './sound';
 
@@ -35,10 +36,23 @@ export type GameUi = {
   inventoryNote: HTMLElement;
   stars: HTMLElement;
   restart: HTMLButtonElement;
-  hint: HTMLButtonElement;
 };
 
-export type Game = { stop(): void };
+export type GameHandlers = {
+  onWin(stars: number, steps: number): void;
+  /** 每次重新开始后第一次动手时调用。 */
+  onFirstMove?(): void;
+  /** 预判真正显示出来时调用，这时才该扣道具。 */
+  onPreviewShown?(): void;
+};
+
+export type Game = {
+  stop(): void;
+  /** 下面三个返回 false 表示这次没有生效，不该扣道具。 */
+  showHint(): boolean;
+  armPreview(): boolean;
+  undo(): boolean;
+};
 
 const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
 
@@ -64,7 +78,8 @@ export function startGame(
   level: Level,
   ui: GameUi,
   sound: Sound,
-  onWin: (stars: number) => void,
+  handlers: GameHandlers,
+  skin: SkinId = 'default',
 ): Game {
   const { canvas } = ui;
   const listeners = new AbortController();
@@ -102,7 +117,10 @@ export function startGame(
   let celebrated = false;
   let steps = 0;
   let hint: Position | null = null;
-  let usedHint = false;
+  let assisted = false;
+  let previewArmed = false;
+  let ghost: Segment[] | null = null;
+  let history: { grid: Grid; position: Position }[] = [];
   let flash = 0;
   let time = 0;
   let focus: Position | null = null;
@@ -116,6 +134,8 @@ export function startGame(
   const mirrorAngles = new Map<string, number>();
   const mirrorGoals = new Map<string, number>();
   const charges = new Map(targets.map((cell) => [cellKey(cell.x, cell.y), 0]));
+
+  const spark = skinSpark(skin);
 
   const canPlace = () => !solved && countPlaced(grid) < inventory;
 
@@ -158,7 +178,7 @@ export function startGame(
 
   function burst(point: Position, count: number, speed: number, color: Rgb): void {
     if (reducedMotion.matches) return;
-    const colors = [color, PARTICLE_COLORS.white, PARTICLE_COLORS.spark];
+    const colors = [color, PARTICLE_COLORS.white, spark];
     for (let i = 0; i < count; i += 1) {
       const angle = Math.random() * Math.PI * 2;
       const velocity = speed * (0.3 + Math.random());
@@ -186,10 +206,23 @@ export function startGame(
     const next = interact(grid, position, inventory);
     if (!next || !before) return;
 
+    if (previewArmed) {
+      previewArmed = false;
+      assisted = true;
+      ghost = traceLasers(next).segments;
+      hint = null;
+      handlers.onPreviewShown?.();
+      requestFrame();
+      return;
+    }
+
+    if (steps === 0) handlers.onFirstMove?.();
     revealed = retractReveal(revealed, beam, center(position));
+    history.push({ grid, position });
     grid = next;
     steps += 1;
     hint = null;
+    ghost = null;
 
     const key = cellKey(position.x, position.y);
     const after = grid[position.y]?.[position.x];
@@ -203,7 +236,7 @@ export function startGame(
     }
 
     refreshTrace();
-    burst(center(position), 6, 1.6, PARTICLE_COLORS.spark);
+    burst(center(position), 6, 1.6, spark);
     if (solved) setFocus(null);
     requestFrame();
   }
@@ -218,7 +251,10 @@ export function startGame(
     celebrated = false;
     steps = 0;
     hint = null;
-    usedHint = false;
+    assisted = false;
+    previewArmed = false;
+    ghost = null;
+    history = [];
     flash = 0;
     particles = [];
     rings = [];
@@ -226,11 +262,47 @@ export function startGame(
     requestFrame();
   }
 
-  function showHint(): void {
-    if (solved) return;
+  function showHint(): boolean {
+    if (solved) return false;
     hint = solve(grid, inventory)?.[0] ?? null;
-    usedHint = true;
+    if (!hint) return false;
+    assisted = true;
+    previewArmed = false;
+    ghost = null;
     requestFrame();
+    return true;
+  }
+
+  function armPreview(): boolean {
+    if (solved || previewArmed) return false;
+    previewArmed = true;
+    hint = null;
+    ghost = null;
+    requestFrame();
+    return true;
+  }
+
+  /** 退回上一步，但步数不退：否则花金币就能买到 3 星。 */
+  function undo(): boolean {
+    const last = history.pop();
+    if (solved || !last) return false;
+
+    const { position } = last;
+    const current = grid[position.y]?.[position.x];
+    const previous = last.grid[position.y]?.[position.x];
+    revealed = retractReveal(revealed, beam, center(position));
+    grid = last.grid;
+    hint = null;
+    ghost = null;
+    previewArmed = false;
+    if (current?.kind === previous?.kind && isRotatable(grid, position)) {
+      const key = cellKey(position.x, position.y);
+      mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
+    }
+    sound.rotate();
+    refreshTrace();
+    requestFrame();
+    return true;
   }
 
   function isTargetLit(position: Position): boolean {
@@ -243,7 +315,7 @@ export function startGame(
   function updateHud(): void {
     const litFlags = targets.map(isTargetLit);
     const left = inventory - countPlaced(grid);
-    const state = `${litFlags.join()}|${celebrated}|${steps}|${left}|${hint !== null}|${usedHint}`;
+    const state = `${litFlags.join()}|${celebrated}|${steps}|${left}|${hint !== null}|${assisted}|${previewArmed}|${ghost !== null}`;
     if (state === hudState) return;
     hudState = state;
 
@@ -253,9 +325,15 @@ export function startGame(
     });
     ui.pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
 
-    const stars = starsFor(steps, level.par, usedHint);
-    const hintMessage = '点一下金色光圈里的格子。';
-    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : hint ? hintMessage : defaultMessage;
+    const stars = starsFor(steps, level.par, assisted);
+    const toolMessage = hint
+      ? '点一下金色光圈里的格子。'
+      : previewArmed
+        ? '点一面镜子或一块空地，看点它之后的光路。这一下不算步数。'
+        : ghost
+          ? '白色虚线是点它之后的光路。'
+          : defaultMessage;
+    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : toolMessage;
     ui.status.classList.toggle('won', celebrated);
 
     // 过关前显示按现在的步数还能拿几星，让玩家看到每多点一次的代价
@@ -264,7 +342,7 @@ export function startGame(
     });
     ui.stars.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
     ui.stepCount.textContent = `步数 ${steps}`;
-    ui.parNote.textContent = usedHint ? '用过提示，最多 2 星' : `${level.par} 步内得 3 星`;
+    ui.parNote.textContent = assisted ? '用过提示或预判，最多 2 星' : `${level.par} 步内得 3 星`;
     ui.inventoryNote.textContent = inventory > 0 ? `还能放 ${left} 面镜子` : '';
     ui.score.classList.toggle('won', celebrated);
   }
@@ -307,7 +385,7 @@ export function startGame(
       celebrated = true;
       flash = 1;
       canvas.classList.add('won');
-      const stars = starsFor(steps, level.par, usedHint);
+      const stars = starsFor(steps, level.par, assisted);
       sound.win(stars);
       for (const position of targets) {
         const point = center(position);
@@ -316,7 +394,7 @@ export function startGame(
         burst(point, 70, 5, color);
         if (!reducedMotion.matches) rings.push({ ...point, age: 0, life: 0.9, color });
       }
-      onWin(stars);
+      handlers.onWin(stars, steps);
     }
 
     if (!reducedMotion.matches) spawnBeamLife(dt);
@@ -352,8 +430,8 @@ export function startGame(
         vx: (Math.random() - 0.5) * 0.5,
         vy: (Math.random() - 0.5) * 0.5,
         life: 0.5 + Math.random() * 0.7,
-        size: 0.018,
-        color: PARTICLE_COLORS.white,
+        size: skin === 'gold' ? 0.03 : 0.018,
+        color: skin === 'gold' ? spark : PARTICLE_COLORS.white,
       });
 
       if (Math.random() < 0.4) {
@@ -365,7 +443,7 @@ export function startGame(
           vy: Math.sin(angle) * 2.2,
           life: 0.18 + Math.random() * 0.25,
           size: 0.022,
-          color: PARTICLE_COLORS.spark,
+          color: spark,
         });
       }
     }
@@ -405,6 +483,8 @@ export function startGame(
       charges,
       focus,
       hint,
+      ghost,
+      skin,
       canPlace: canPlace(),
       flash,
       won: celebrated,
@@ -461,7 +541,6 @@ export function startGame(
   }, { signal });
 
   ui.restart.addEventListener('click', reset, { signal });
-  ui.hint.addEventListener('click', showHint, { signal });
 
   function fitToScreen(): void {
     const others = ui.screen.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
@@ -485,5 +564,8 @@ export function startGame(
       stopped = true;
       listeners.abort();
     },
+    showHint,
+    armPreview,
+    undo,
   };
 }

@@ -1,3 +1,4 @@
+import type { SkinId } from './economy';
 import type { BeamColor, Direction, Grid, Position, Segment, TargetColor } from './laser';
 
 /** 外圈的墙只露出这么多，把画面留给台面。单位是格子。 */
@@ -10,6 +11,7 @@ const WHITE: Rgb = [255, 255, 255];
 const FOCUS: Rgb = [70, 240, 255];
 const SPARK: Rgb = [255, 190, 150];
 const HINT: Rgb = [255, 228, 107];
+const GOLD: Rgb = [255, 206, 92];
 
 const BEAM_COLORS: Record<BeamColor, { glow: Rgb; core: Rgb }> = {
   red: { glow: [255, 38, 96], core: [255, 238, 242] },
@@ -36,7 +38,9 @@ export type Particle = {
 
 export type Ring = { x: number; y: number; age: number; life: number; color: Rgb };
 
-export const PARTICLE_COLORS = { spark: SPARK, white: WHITE };
+export const PARTICLE_COLORS = { white: WHITE };
+
+export const skinSpark = (skin: SkinId): Rgb => (skin === 'gold' ? GOLD : SPARK);
 
 export type Frame = {
   grid: Grid;
@@ -48,6 +52,9 @@ export type Frame = {
   focus: Position | null;
   /** 提示要玩家点的格子。 */
   hint: Position | null;
+  /** 预判看到的光路：点了那个格子之后光会怎么走。 */
+  ghost: readonly Segment[] | null;
+  skin: SkinId;
   /** 还能放镜子时，鼠标停在空地上会显示一面半透明的镜子。 */
   canPlace: boolean;
   flash: number;
@@ -387,19 +394,24 @@ function shownEnd({ from, to, emitter, start, length }: Segment, revealed: reado
 }
 
 function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
-  const { beam, revealed, time, flash, still } = frame;
+  const { beam, revealed, time, flash, still, skin } = frame;
+  const gold = skin === 'gold';
   const flicker = still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13);
   const boost = 1 + flash * 0.8;
 
   for (const segment of beam) {
     const end = shownEnd(segment, revealed);
     if (end) {
-      drawBeamHaze(ctx, segment.from, end, HAZE_RADIUS * boost, BEAM_COLORS[segment.color].glow, 0.3 * flicker);
+      drawBeamHaze(ctx, segment.from, end, HAZE_RADIUS * boost * (gold ? 1.2 : 1), BEAM_COLORS[segment.color].glow, 0.3 * flicker);
     }
   }
 
   for (const color of ['red', 'blue'] as const) {
-    const { glow: glowColor, core } = BEAM_COLORS[color];
+    // 皮肤只改光芯和流光，外面的光晕还是红蓝，颜色解谜不受影响。
+    // 这一层是叠加发光，光芯太亮会直接变白，看不出金色
+    const { glow: plainGlow, core: plainCore } = BEAM_COLORS[color];
+    const glowColor = gold ? mix(plainGlow, GOLD, 0.4) : plainGlow;
+    const core = gold ? mix(plainGlow, GOLD, 0.8) : plainCore;
     const segments = beam.filter((segment) => segment.color === color);
 
     const stroke = (style: string, width: number, dash?: readonly [number, number]) => {
@@ -421,7 +433,7 @@ function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
 
     stroke(rgba(glowColor, 0.75 * flicker), 0.11 * boost);
     stroke(rgba(core, 1), 0.06 * boost);
-    if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
+    if (!still) stroke(gold ? rgba(GOLD, 1) : 'rgba(255, 255, 255, 0.85)', gold ? 0.09 : 0.07, [0.14, 0.62]);
   }
 
   for (const { to, emitter, start, length, color } of beam) {
@@ -430,6 +442,28 @@ function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
     glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM_COLORS[color].glow, 0.3);
     glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_COLORS[color].core, 1);
   }
+}
+
+/** 发光层是叠加的，亮到一定程度都会变白，金色光芯要等叠完再盖上去。 */
+function drawGoldCore(ctx: CanvasRenderingContext2D, { beam, revealed, time, still }: Frame): void {
+  const trace = (style: string, width: number, dash: readonly number[]) => {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.setLineDash([...dash]);
+    ctx.lineDashOffset = still ? 0 : -time * 2.4;
+    ctx.lineCap = dash.length > 0 ? 'butt' : 'round';
+    ctx.beginPath();
+    for (const segment of beam) {
+      const end = shownEnd(segment, revealed);
+      if (!end) continue;
+      ctx.moveTo(segment.from.x, segment.from.y);
+      ctx.lineTo(end.x, end.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  trace(rgba(GOLD, 1), 0.05, []);
+  trace('rgba(255, 250, 225, 1)', 0.05, [0.12, 0.44]);
 }
 
 function drawCrystalLight(ctx: CanvasRenderingContext2D, frame: Frame): void {
@@ -474,6 +508,22 @@ function drawHint(ctx: CanvasRenderingContext2D, { hint, time, still }: Frame): 
   ctx.beginPath();
   ctx.arc(cx, cy, 0.46 + 0.04 * pulse, 0, Math.PI * 2);
   ctx.stroke();
+}
+
+function drawGhost(ctx: CanvasRenderingContext2D, { ghost, time, still }: Frame): void {
+  if (!ghost) return;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.lineWidth = 0.05;
+  ctx.lineCap = 'butt';
+  ctx.setLineDash([0.18, 0.14]);
+  ctx.lineDashOffset = still ? 0 : -time * 0.8;
+  ctx.beginPath();
+  for (const { from, to } of ghost) {
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawEffects(ctx: CanvasRenderingContext2D, frame: Frame): void {
@@ -602,6 +652,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
       drawCrystalLight(emissionCtx, frame);
       drawBeam(emissionCtx, frame);
       drawHint(emissionCtx, frame);
+      drawGhost(emissionCtx, frame);
       drawEffects(emissionCtx, frame);
 
       // 缩小再放大就是便宜的泛光：亮的地方会自然晕开，把台面照亮
@@ -623,6 +674,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
       main.globalCompositeOperation = 'source-over';
 
       useCellUnits(main);
+      if (frame.skin === 'gold') drawGoldCore(main, frame);
       frame.grid.forEach((row, y) => row.forEach((cell, x) => {
         if (cell.kind === 'emitter') drawEmitter(main, x, y, cell.direction, cell.color);
       }));

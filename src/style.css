@@ -227,6 +227,9 @@ h2 {
 #hud,
 #score,
 #status,
+#reward,
+#result,
+#tools,
 #footer {
   width: min(100%, 760px);
 }
@@ -355,6 +358,10 @@ h2 {
 }
 
 #footer button,
+#tools button,
+#daily-start,
+.shop-row button,
+#result-copy,
 .small-button,
 #resume {
   min-height: 44px;
@@ -367,12 +374,17 @@ h2 {
 }
 
 #footer button:hover,
+#tools button:hover:not(:disabled),
+#daily-start:hover,
+.shop-row button:hover:not(:disabled),
 .small-button:hover {
   border-color: var(--text);
   background: rgba(255, 255, 255, 0.1);
 }
 
 #footer button.primary,
+#daily-start.primary,
+#result-copy.primary,
 #resume.primary {
   border-color: var(--crystal);
   background: var(--crystal);
@@ -381,9 +393,138 @@ h2 {
 }
 
 #footer button.primary:hover,
+#daily-start.primary:hover,
+#result-copy.primary:hover,
 #resume.primary:hover {
   border-color: #9df7ff;
   background: #9df7ff;
+}
+
+/* 每日一题、道具和商店 */
+
+#daily-card {
+  padding: 16px;
+  border: 1px solid var(--crystal);
+  border-radius: 8px;
+  background: rgba(70, 240, 255, 0.07);
+}
+
+.daily-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+#daily-title {
+  font-size: 1.25rem;
+}
+
+#daily-meta,
+.shop-note {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+#daily-summary {
+  margin: 8px 0 12px;
+  line-height: 1.6;
+}
+
+#daily-share,
+#result-share {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(4, 4, 30, 0.45);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.daily-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+#daily-copied,
+#result-copied {
+  color: var(--crystal);
+  font-size: 0.875rem;
+}
+
+#reward {
+  margin: 0;
+  color: var(--star);
+  font-weight: 600;
+}
+
+#reward:empty {
+  display: none;
+}
+
+#tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#tools button:disabled,
+.shop-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.coin-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+#tools .coin-balance {
+  margin-left: auto;
+}
+
+.coin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff3b0, var(--star) 55%, #b98a1e);
+}
+
+.shop-note {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 10px;
+  border-top: 1px solid rgba(170, 176, 220, 0.2);
+}
+
+.shop-row h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.shop-row p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 @media (prefers-reduced-motion: no-preference) {

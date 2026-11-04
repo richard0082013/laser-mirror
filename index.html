@@ -23,7 +23,28 @@
         </div>
         <p id="select-note" role="status"></p>
       </header>
+      <section id="daily-card" aria-labelledby="daily-title">
+        <div class="daily-top">
+          <h2 id="daily-title">今日一题</h2>
+          <span id="daily-meta"></span>
+        </div>
+        <p id="daily-summary"></p>
+        <pre id="daily-share" hidden></pre>
+        <div class="daily-actions">
+          <button id="daily-start" type="button"></button>
+          <button id="daily-copy" class="small-button" type="button" hidden>复制成绩</button>
+          <span id="daily-copied" role="status"></span>
+        </div>
+      </section>
       <div id="chapters"></div>
+      <section id="shop" aria-labelledby="shop-title">
+        <div class="chapter-header">
+          <h2 id="shop-title">商店</h2>
+          <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="shop-coins"></span></span>
+        </div>
+        <p class="shop-note">玩每日一题和第一次过关能拿金币。道具只能在闯关里用。</p>
+        <div id="shop-items"></div>
+      </section>
     </main>
 
     <main id="game-screen" hidden>
@@ -43,11 +64,24 @@
         <span id="stars" role="img"></span>
       </div>
       <p id="status" role="status"></p>
+      <p id="reward" role="status"></p>
+      <div id="result" hidden>
+        <pre id="result-share"></pre>
+        <div class="daily-actions">
+          <button id="result-copy" class="primary" type="button">复制成绩</button>
+          <span id="result-copied" role="status"></span>
+        </div>
+      </div>
+      <div id="tools">
+        <button id="hint" type="button"></button>
+        <button id="preview" type="button"></button>
+        <button id="undo" type="button"></button>
+        <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="game-coins"></span></span>
+      </div>
       <footer id="footer">
         <button id="back" class="small-button" type="button">选关</button>
         <button class="mute small-button" type="button"></button>
         <span class="spacer"></span>
-        <button id="hint" type="button">提示</button>
         <button id="restart" type="button">重新开始</button>
         <button id="skip" type="button">跳过这关</button>
         <button id="next" class="primary" type="button" hidden>下一关</button>
