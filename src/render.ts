@@ -30,7 +30,7 @@ export const PARTICLE_COLORS = { beam: BEAM, spark: SPARK, crystal: CRYSTAL, whi
 export type Frame = {
   grid: Grid;
   beam: readonly MeasuredSegment[];
-  revealed: number;
+  revealed: readonly number[];
   time: number;
   mirrorAngles: ReadonlyMap<string, number>;
   charges: ReadonlyMap<string, number>;
@@ -238,16 +238,24 @@ const EMITTER_ANGLES: Record<Direction, number> = {
   up: -Math.PI / 2,
 };
 
+/** 画在静态背景里，这样影子在光的下面，不会压暗刚射出的光束。 */
+function drawEmitterShadows(ctx: CanvasRenderingContext2D, grid: Grid): void {
+  grid.forEach((row, y) => row.forEach((cell, x) => {
+    if (cell.kind !== 'emitter') return;
+    const cx = x + 0.5;
+    const cy = y + 0.56;
+    const shadow = ctx.createRadialGradient(cx, cy, 0.15, cx, cy, 0.62);
+    shadow.addColorStop(0, 'rgba(2, 2, 20, 0.75)');
+    shadow.addColorStop(1, 'rgba(2, 2, 20, 0)');
+    ctx.fillStyle = shadow;
+    ctx.fillRect(cx - 0.7, cy - 0.7, 1.4, 1.4);
+  }));
+}
+
 function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direction: Direction): void {
   ctx.save();
   ctx.translate(x + 0.5, y + 0.5);
   ctx.rotate(EMITTER_ANGLES[direction]);
-
-  const shadow = ctx.createRadialGradient(0, 0.06, 0.15, 0, 0.06, 0.62);
-  shadow.addColorStop(0, 'rgba(2, 2, 20, 0.75)');
-  shadow.addColorStop(1, 'rgba(2, 2, 20, 0)');
-  ctx.fillStyle = shadow;
-  ctx.fillRect(-0.7, -0.6, 1.4, 1.3);
 
   const body = ctx.createLinearGradient(0, -0.3, 0, 0.3);
   body.addColorStop(0, '#d6dcf5');
@@ -268,10 +276,75 @@ function drawEmitter(ctx: CanvasRenderingContext2D, x: number, y: number, direct
   ctx.restore();
 }
 
+const HAZE_RADIUS = 0.7;
+
+/** 光束周围的光晕：用连续的渐变，不是一层层叠线，所以没有色带。 */
+function drawBeamHaze(
+  ctx: CanvasRenderingContext2D,
+  from: Position,
+  to: Position,
+  radius: number,
+  alpha: number,
+): void {
+  const addStops = (gradient: CanvasGradient, offsets: readonly number[]) => {
+    const falloff = [1, 0.62, 0.3, 0.1, 0];
+    offsets.forEach((offset, index) => {
+      gradient.addColorStop(offset, rgba(BEAM, alpha * (falloff[index] ?? 0)));
+    });
+  };
+
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length === 0) return;
+  const dirX = (to.x - from.x) / length;
+  const dirY = (to.y - from.y) / length;
+  const sideX = -dirY * radius;
+  const sideY = dirX * radius;
+
+  const band = ctx.createLinearGradient(from.x - sideX, from.y - sideY, from.x + sideX, from.y + sideY);
+  const bandStops = [0, 0.12, 0.27, 0.42, 0.5];
+  const falloff = [0, 0.1, 0.3, 0.62, 1];
+  bandStops.forEach((offset, index) => {
+    const value = rgba(BEAM, alpha * (falloff[index] ?? 0));
+    band.addColorStop(offset, value);
+    band.addColorStop(1 - offset, value);
+  });
+  ctx.fillStyle = band;
+  ctx.beginPath();
+  ctx.moveTo(from.x - sideX, from.y - sideY);
+  ctx.lineTo(from.x + sideX, from.y + sideY);
+  ctx.lineTo(to.x + sideX, to.y + sideY);
+  ctx.lineTo(to.x - sideX, to.y - sideY);
+  ctx.closePath();
+  ctx.fill();
+
+  // 两端各补一个朝外的半圆，光晕在拐角处才接得上
+  const angle = Math.atan2(dirY, dirX);
+  for (const [point, startAngle] of [[to, angle - Math.PI / 2], [from, angle + Math.PI / 2]] as const) {
+    const cap = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
+    addStops(cap, [0, 0.16, 0.46, 0.76, 1]);
+    ctx.fillStyle = cap;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, startAngle, startAngle + Math.PI);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
   const { beam, revealed, time, flash, still } = frame;
   const flicker = still ? 1 : 0.93 + 0.07 * Math.sin(time * 47) * Math.sin(time * 13);
   const boost = 1 + flash * 0.8;
+
+  const shownEnd = ({ from, to, beamId, start, length }: MeasuredSegment): Position | null => {
+    const shown = Math.min(1, ((revealed[beamId] ?? 0) - start) / length);
+    if (shown <= 0) return null;
+    return { x: from.x + (to.x - from.x) * shown, y: from.y + (to.y - from.y) * shown };
+  };
+
+  for (const segment of beam) {
+    const end = shownEnd(segment);
+    if (end) drawBeamHaze(ctx, segment.from, end, HAZE_RADIUS * boost, 0.3 * flicker);
+  }
 
   const stroke = (style: string, width: number, dash?: readonly [number, number]) => {
     ctx.strokeStyle = style;
@@ -280,31 +353,25 @@ function drawBeam(ctx: CanvasRenderingContext2D, frame: Frame): void {
     ctx.lineDashOffset = dash ? -time * 7 : 0;
     ctx.lineCap = dash ? 'butt' : 'round';
     ctx.beginPath();
-    for (const { from, to, start, length } of beam) {
-      const shown = Math.min(1, Math.max(0, (revealed - start) / (length || 1)));
-      if (shown <= 0) continue;
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(from.x + (to.x - from.x) * shown, from.y + (to.y - from.y) * shown);
+    for (const segment of beam) {
+      const end = shownEnd(segment);
+      if (!end) continue;
+      ctx.moveTo(segment.from.x, segment.from.y);
+      ctx.lineTo(end.x, end.y);
     }
     ctx.stroke();
     ctx.setLineDash([]);
   };
 
-  // 一层层叠很淡的宽线，光晕才会慢慢散开，不会有硬边
-  for (let width = 1.3; width > 0.12; width *= 0.8) {
-    stroke(rgba(BEAM, 0.022 * flicker), width * boost);
-  }
   stroke(rgba(BEAM, 0.75 * flicker), 0.11 * boost);
   stroke(rgba(BEAM_CORE, 1), 0.06 * boost);
   if (!still) stroke('rgba(255, 255, 255, 0.85)', 0.07, [0.14, 0.62]);
 
-  for (const { to, start, length } of beam) {
-    if (revealed < start) continue;
+  for (const { to, beamId, start, length } of beam) {
+    if ((revealed[beamId] ?? 0) < start + length) continue;
     const pulse = still ? 1 : 0.85 + 0.15 * Math.sin(time * 9 + to.x * 3 + to.y * 5);
-    if (revealed >= start + length) {
-      glow(ctx, to.x, to.y, 0.42 * pulse * boost, BEAM, 0.6);
-      glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, 1);
-    }
+    glow(ctx, to.x, to.y, 0.34 * pulse * boost, BEAM, 0.3);
+    glow(ctx, to.x, to.y, 0.11 * pulse * boost, BEAM_CORE, 1);
   }
 }
 
@@ -427,6 +494,7 @@ export function createRenderer(canvas: HTMLCanvasElement, walls: Grid): Renderer
       useCellUnits(backgroundCtx);
       drawTable(backgroundCtx, columns, rows);
       drawWalls(backgroundCtx, walls, cellPixels);
+      drawEmitterShadows(backgroundCtx, walls);
     },
 
     draw(frame) {

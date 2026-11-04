@@ -1,3 +1,5 @@
+@import '@fontsource/zcool-qingke-huangyou/400.css';
+
 :root {
   --page-top: #221d55;
   --page-bottom: #0d1034;
@@ -5,7 +7,7 @@
   --muted: #aab0dc;
   --crystal: #46f0ff;
   --beam: #ff2660;
-  --pip-off: #3a3f78;
+  --pip-off: #8a90d0;
 }
 
 * {
@@ -37,11 +39,24 @@ body {
 
 h1 {
   margin: 0;
-  font-family: 'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
-  font-size: clamp(1.5rem, 5vw, 2.25rem);
-  font-weight: 400;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
   line-height: 1.1;
+}
+
+/* 这个字体笔画细密，只用来写大字号的短词；关卡名要读得清，用系统字体 */
+#level-number {
+  font-family: 'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
+  font-size: clamp(1.875rem, 6vw, 2.5rem);
+  font-weight: 400;
   letter-spacing: 0.02em;
+}
+
+#level-name {
+  color: var(--muted);
+  font-size: 1.0625rem;
+  font-weight: 500;
 }
 
 #pips {

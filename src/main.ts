@@ -1,6 +1,7 @@
-import { beamLength, distanceAlong, type MeasuredSegment, measureSegments } from './beam';
+import { beamLengths, isReached, type MeasuredSegment, measureSegments, retractReveal } from './beam';
 import { type Grid, isSolved, parseGrid, type Position, rotateMirror, traceLasers } from './laser';
 import { levels } from './levels';
+import { nextInDirection } from './navigation';
 import { cellKey, createRenderer, PARTICLE_COLORS, type Particle, type Ring } from './render';
 
 const BEAM_SPEED = 26; // 格子/秒
@@ -18,12 +19,14 @@ const canvas = requireElement<HTMLCanvasElement>('#board');
 const statusLine = requireElement<HTMLElement>('#status');
 const pips = requireElement<HTMLElement>('#pips');
 const restart = requireElement<HTMLButtonElement>('#restart');
-const title = requireElement<HTMLElement>('#title');
+const levelNumber = requireElement<HTMLElement>('#level-number');
+const levelName = requireElement<HTMLElement>('#level-name');
 
 const level = levels[0];
 if (!level) throw new Error('没有可玩的关卡');
 const startGrid = parseGrid(level.grid);
-title.textContent = `第 1 关：${level.name}`;
+levelNumber.textContent = '第 1 关';
+levelName.textContent = level.name;
 
 const renderer = createRenderer(canvas, startGrid);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -52,7 +55,7 @@ function restingAngle(grid: Grid, { x, y }: Position): number {
 let grid: Grid = startGrid;
 let beam: MeasuredSegment[] = [];
 let solved = false;
-let revealed = 0;
+let revealed: number[] = [];
 let delay = EMITTER_CHARGE_DELAY;
 let celebrated = false;
 let flash = 0;
@@ -61,6 +64,7 @@ let focus: Position | null = null;
 let moteDebt = 0;
 let particles: Particle[] = [];
 let rings: Ring[] = [];
+let hudState = '';
 
 const mirrorAngles = new Map(mirrorCells.map((cell) => [cellKey(cell.x, cell.y), restingAngle(startGrid, cell)]));
 const mirrorGoals = new Map(mirrorAngles);
@@ -94,23 +98,30 @@ function burst(point: Position, count: number, speed: number): void {
   }
 }
 
+function setFocus(cell: Position | null): void {
+  focus = cell;
+  canvas.style.cursor = cell ? 'pointer' : 'default';
+  requestFrame();
+}
+
 function rotateAt(cell: Position): void {
   if (solved || grid[cell.y]?.[cell.x]?.kind !== 'mirror') return;
 
-  const reached = distanceAlong(beam, center(cell));
+  revealed = retractReveal(revealed, beam, center(cell));
   grid = rotateMirror(grid, cell);
   refreshTrace();
-  if (reached !== null) revealed = Math.min(revealed, reached);
 
   const key = cellKey(cell.x, cell.y);
   mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
   burst(center(cell), 6, 1.6);
+  if (solved) setFocus(null);
+  requestFrame();
 }
 
 function reset(): void {
   grid = startGrid;
   refreshTrace();
-  revealed = 0;
+  revealed = beamLengths(beam).map(() => 0);
   delay = EMITTER_CHARGE_DELAY;
   celebrated = false;
   flash = 0;
@@ -123,24 +134,24 @@ function reset(): void {
     if (!isResting) mirrorGoals.set(key, current + Math.PI / 2);
   }
   canvas.classList.remove('won');
+  requestFrame();
 }
 
 function isTargetLit(cell: Position): boolean {
-  const distance = distanceAlong(beam, center(cell));
-  return distance !== null && distance <= revealed;
+  return isReached(revealed, beam, center(cell));
 }
 
+/** 只在内容变化时才写 DOM，这个函数每帧都会调用。 */
 function updateHud(): void {
-  let lit = 0;
-  targets.forEach((cell, index) => {
-    const isLit = isTargetLit(cell);
-    if (isLit) lit += 1;
-    pipElements[index]?.classList.toggle('lit', isLit);
-  });
+  const litFlags = targets.map(isTargetLit);
+  const state = `${litFlags.join()}|${celebrated}`;
+  if (state === hudState) return;
+  hudState = state;
 
+  const lit = litFlags.filter(Boolean).length;
+  litFlags.forEach((isLit, index) => pipElements[index]?.classList.toggle('lit', isLit));
   pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
-  const message = celebrated ? '全部点亮，过关！' : '转动镜子，点亮全部水晶。';
-  if (statusLine.textContent !== message) statusLine.textContent = message;
+  statusLine.textContent = celebrated ? '全部点亮，过关！' : '转动镜子，点亮全部水晶。';
   statusLine.classList.toggle('won', celebrated);
 }
 
@@ -148,14 +159,14 @@ function update(dt: number): void {
   time += dt;
   flash = Math.max(0, flash - dt * 1.5);
 
-  const total = beamLength(beam);
+  const lengths = beamLengths(beam);
   if (reducedMotion.matches) {
-    revealed = total;
+    revealed = lengths;
     delay = 0;
   } else if (delay > 0) {
     delay -= dt;
   } else {
-    revealed = Math.min(total, revealed + BEAM_SPEED * dt);
+    revealed = lengths.map((length, id) => Math.min(length, (revealed[id] ?? 0) + BEAM_SPEED * dt));
   }
 
   for (const [key, goal] of mirrorGoals) {
@@ -173,7 +184,8 @@ function update(dt: number): void {
     if (goal === 1 && before < 0.05) burst(center(cell), 18, 2.4);
   }
 
-  if (solved && revealed >= total && !celebrated) {
+  const fullyRevealed = lengths.every((length, id) => (revealed[id] ?? 0) >= length);
+  if (solved && fullyRevealed && !celebrated) {
     celebrated = true;
     flash = 1;
     canvas.classList.add('won');
@@ -208,7 +220,7 @@ function spawnBeamLife(dt: number): void {
   while (moteDebt >= 1) {
     moteDebt -= 1;
     const segment = beam[Math.floor(Math.random() * beam.length)];
-    if (!segment || revealed < segment.start + segment.length) continue;
+    if (!segment || (revealed[segment.beamId] ?? 0) < segment.start + segment.length) continue;
 
     const along = Math.random();
     emit({
@@ -236,10 +248,19 @@ function spawnBeamLife(dt: number): void {
   }
 }
 
-let lastTimestamp = performance.now();
+let lastTimestamp: number | null = null;
+let frameRequested = false;
+
+/** 开了“减少动态效果”时画面不会自己变，只在有输入时才画一帧。 */
+function requestFrame(): void {
+  if (frameRequested) return;
+  frameRequested = true;
+  requestAnimationFrame(loop);
+}
 
 function loop(timestamp: number): void {
-  const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+  frameRequested = false;
+  const dt = lastTimestamp === null ? 0 : Math.min(0.05, Math.max(0, (timestamp - lastTimestamp) / 1000));
   lastTimestamp = timestamp;
   update(dt);
   renderer.draw({
@@ -256,7 +277,7 @@ function loop(timestamp: number): void {
     rings,
     still: reducedMotion.matches,
   });
-  requestAnimationFrame(loop);
+  if (!reducedMotion.matches) requestFrame();
 }
 
 function cellFromEvent(event: MouseEvent): Position {
@@ -266,16 +287,15 @@ function cellFromEvent(event: MouseEvent): Position {
 
 canvas.addEventListener('click', (event) => rotateAt(cellFromEvent(event)));
 
-canvas.addEventListener('mousemove', (event) => {
+// 只有真正的鼠标才有悬停；手指点一下不该留下高亮
+canvas.addEventListener('pointermove', (event) => {
+  if (event.pointerType !== 'mouse') return;
   const cell = cellFromEvent(event);
-  const canRotate = grid[cell.y]?.[cell.x]?.kind === 'mirror' && !solved;
-  focus = canRotate ? cell : null;
-  canvas.style.cursor = canRotate ? 'pointer' : 'default';
+  setFocus(grid[cell.y]?.[cell.x]?.kind === 'mirror' && !solved ? cell : null);
 });
 
-canvas.addEventListener('mouseleave', () => {
-  focus = null;
-});
+canvas.addEventListener('pointerleave', () => setFocus(null));
+canvas.addEventListener('blur', () => setFocus(null));
 
 /** 方向键跳到那个方向上最近的镜子，回车或空格旋转。 */
 canvas.addEventListener('keydown', (event) => {
@@ -289,17 +309,9 @@ canvas.addEventListener('keydown', (event) => {
 
   if (step) {
     event.preventDefault();
-    const from = focus ?? mirrorCells[0];
-    if (!from) return;
-    if (!focus) {
-      focus = from;
-      return;
-    }
-    const ahead = mirrorCells
-      .map((cell) => ({ cell, forward: (cell.x - from.x) * step.x + (cell.y - from.y) * step.y }))
-      .filter(({ forward }) => forward > 0)
-      .sort((a, b) => a.forward - b.forward)[0];
-    if (ahead) focus = ahead.cell;
+    if (solved) return;
+    const next = focus ? nextInDirection(mirrorCells, focus, step) : mirrorCells[0];
+    if (next) setFocus(next);
   } else if ((event.key === 'Enter' || event.key === ' ') && focus) {
     event.preventDefault();
     rotateAt(focus);
@@ -307,7 +319,7 @@ canvas.addEventListener('keydown', (event) => {
 });
 
 canvas.addEventListener('focus', () => {
-  if (canvas.matches(':focus-visible') && !focus) focus = mirrorCells[0] ?? null;
+  if (canvas.matches(':focus-visible') && !focus && !solved) setFocus(mirrorCells[0] ?? null);
 });
 
 restart.addEventListener('click', reset);
@@ -320,9 +332,11 @@ function fitToScreen(): void {
   canvas.style.height = `${Math.round(cssWidth / renderer.aspectRatio)}px`;
   document.documentElement.style.setProperty('--board-width', `${cssWidth}px`);
   renderer.resize(cssWidth, Math.min(window.devicePixelRatio || 1, 2));
+  requestFrame(); // 改尺寸会清空画布
 }
 
 window.addEventListener('resize', fitToScreen);
-fitToScreen();
+reducedMotion.addEventListener('change', requestFrame);
 refreshTrace();
-requestAnimationFrame(loop);
+reset();
+fitToScreen();
