@@ -7,6 +7,8 @@ const PATHS = {
   skip: 'M5 4l10 8-10 8zM19 5v14',
   levels: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
   next: 'M5 12h14M13 6l6 6-6 6',
+  prev: 'M19 12H5M11 6l-6 6 6 6',
+  close: 'M6 6l12 12M18 6L6 18',
   play: 'M7 4l13 8-13 8z',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   check: 'M5 12l5 5L20 7',

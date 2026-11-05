@@ -4,9 +4,12 @@ import {
   buyItem,
   canUseItem,
   chooseSkin,
+  cooldownLeft,
   currentStreak,
   dailyReward,
   draw,
+  expireItems,
+  ITEM_COOLDOWNS_MS,
   DRAW_PRICE,
   DRAW_TABLE,
   ITEM_PRICES,
@@ -19,6 +22,7 @@ import {
   recordDaily,
   saveMeta,
   spendItem,
+  startCooldown,
 } from './economy';
 import type { KeyValueStore } from './progress';
 
@@ -210,5 +214,65 @@ describe('抽奖', () => {
 
   it('金币不够不能抽', () => {
     expect(draw({ ...newMeta(), coins: DRAW_PRICE - 1 }, 0.5)).toBeNull();
+  });
+});
+
+describe('道具当天有效', () => {
+  it('第一次打开只记日期，开局送的道具还在', () => {
+    const meta = expireItems(newMeta(), '2026-11-05');
+    expect(meta.itemsDate).toBe('2026-11-05');
+    expect(meta.items).toEqual(newMeta().items);
+  });
+
+  it('同一天不变', () => {
+    const meta = expireItems(newMeta(), '2026-11-05');
+    expect(expireItems(meta, '2026-11-05')).toBe(meta);
+  });
+
+  it('第二天道具清零，金币和皮肤都还在', () => {
+    const meta: Meta = { ...newMeta(), coins: 77, itemsDate: '2026-11-05', ownedSkins: ['default', 'gold'], skin: 'gold' };
+    const next = expireItems(meta, '2026-11-06');
+    expect(next.items).toEqual({ hint: 0, preview: 0, undo: 0 });
+    expect(next).toMatchObject({ coins: 77, itemsDate: '2026-11-06', skin: 'gold' });
+  });
+
+  it('把手机时钟往回调也算换了一天', () => {
+    const meta: Meta = { ...newMeta(), itemsDate: '2026-11-05' };
+    expect(expireItems(meta, '2026-11-04').items.undo).toBe(0);
+  });
+
+  it('旧存档没有日期时不清道具', () => {
+    const store = memoryStore(JSON.stringify({ coins: 5, items: { hint: 3, preview: 0, undo: 0 } }));
+    const meta = expireItems(loadMeta(store), '2026-11-05');
+    expect(meta.items.hint).toBe(3);
+  });
+});
+
+describe('冷却', () => {
+  const now = 1_000_000;
+
+  it('没用过时不用等', () => {
+    expect(cooldownLeft(newMeta(), 'hint', now)).toBe(0);
+  });
+
+  it('用完开始冷却，时间到了就好', () => {
+    const meta = startCooldown(newMeta(), 'hint', now);
+    expect(cooldownLeft(meta, 'hint', now)).toBe(ITEM_COOLDOWNS_MS.hint);
+    expect(cooldownLeft(meta, 'hint', now + 1000)).toBe(ITEM_COOLDOWNS_MS.hint - 1000);
+    expect(cooldownLeft(meta, 'hint', now + ITEM_COOLDOWNS_MS.hint)).toBe(0);
+  });
+
+  it('各算各的', () => {
+    expect(cooldownLeft(startCooldown(newMeta(), 'hint', now), 'undo', now)).toBe(0);
+  });
+
+  it('存档后读回来还在冷却', () => {
+    const store = memoryStore();
+    saveMeta(store, startCooldown(newMeta(), 'undo', now));
+    expect(cooldownLeft(loadMeta(store), 'undo', now + 1)).toBe(ITEM_COOLDOWNS_MS.undo - 1);
+  });
+
+  it('时钟往回调时最多等一个冷却时长', () => {
+    expect(cooldownLeft(startCooldown(newMeta(), 'undo', now), 'undo', now - 999_999)).toBe(ITEM_COOLDOWNS_MS.undo);
   });
 });

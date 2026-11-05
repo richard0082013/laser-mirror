@@ -9,6 +9,10 @@ export type DailyResult = { steps: number; par: number; stars: number; attempts:
 export type Meta = {
   coins: number;
   items: Record<ItemId, number>;
+  /** 手上的道具属于哪一天。道具只在当天有效，金币不受影响。 */
+  itemsDate: string | null;
+  /** 每种道具冷却结束的时间（毫秒时间戳）。存进存档，重开关卡或刷新页面都不能跳过。 */
+  cooldowns: Record<ItemId, number>;
   ownedSkins: SkinId[];
   skin: SkinId;
   streak: number;
@@ -20,6 +24,7 @@ export type Meta = {
 
 export const ITEM_PRICES: Record<ItemId, number> = { hint: 20, preview: 10, undo: 5 };
 export const SKIN_PRICES: Record<SkinId, number> = { default: 0, gold: 200 };
+export const ITEM_COOLDOWNS_MS: Record<ItemId, number> = { hint: 45_000, preview: 30_000, undo: 10_000 };
 
 const STORAGE_KEY = 'laser-mirror:meta:v1';
 
@@ -27,6 +32,8 @@ export function newMeta(): Meta {
   return {
     coins: 50,
     items: { hint: 1, preview: 1, undo: 1 },
+    itemsDate: null,
+    cooldowns: { hint: 0, preview: 0, undo: 0 },
     ownedSkins: ['default'],
     skin: 'default',
     streak: 0,
@@ -69,12 +76,19 @@ export function loadMeta(store: KeyValueStore | null): Meta {
     const owned = Array.isArray(saved.ownedSkins) ? saved.ownedSkins.filter(isSkin) : [];
     const ownedSkins: SkinId[] = owned.includes('default') ? owned : ['default', ...owned];
     const attempt = (saved.attempt ?? {}) as Record<string, unknown>;
+    const cooldowns = (saved.cooldowns ?? {}) as Record<string, unknown>;
     return {
       coins: isCount(saved.coins) ? saved.coins : base.coins,
       items: {
         hint: isCount(items.hint) ? items.hint : base.items.hint,
         preview: isCount(items.preview) ? items.preview : base.items.preview,
         undo: isCount(items.undo) ? items.undo : base.items.undo,
+      },
+      itemsDate: isDate(saved.itemsDate) ? saved.itemsDate : null,
+      cooldowns: {
+        hint: isCount(cooldowns.hint) ? cooldowns.hint : 0,
+        preview: isCount(cooldowns.preview) ? cooldowns.preview : 0,
+        undo: isCount(cooldowns.undo) ? cooldowns.undo : 0,
       },
       ownedSkins,
       skin: isSkin(saved.skin) && ownedSkins.includes(saved.skin) ? saved.skin : 'default',
@@ -94,6 +108,22 @@ export function saveMeta(store: KeyValueStore | null, meta: Meta): void {
   } catch {
     // 忽略：隐私模式或存储空间满
   }
+}
+
+/** 过了一天道具清零。第一次打开（或旧存档）只记下日期，不清。把手机时钟往回调也算换了一天。 */
+export function expireItems(meta: Meta, today: string): Meta {
+  if (meta.itemsDate === today) return meta;
+  if (meta.itemsDate === null) return { ...meta, itemsDate: today };
+  return { ...meta, itemsDate: today, items: { hint: 0, preview: 0, undo: 0 } };
+}
+
+/** 还要冷却多少毫秒。不会超过这个道具的冷却时长，把手机时钟往回调也不会卡住很久。 */
+export function cooldownLeft(meta: Meta, item: ItemId, now: number): number {
+  return Math.min(Math.max(0, meta.cooldowns[item] - now), ITEM_COOLDOWNS_MS[item]);
+}
+
+export function startCooldown(meta: Meta, item: ItemId, now: number): Meta {
+  return { ...meta, cooldowns: { ...meta.cooldowns, [item]: now + ITEM_COOLDOWNS_MS[item] } };
 }
 
 /** 第一次过关给足，之后只有拿到更多星才给。解法是固定的，重玩不给币，否则金币可以白刷。 */

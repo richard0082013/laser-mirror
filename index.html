@@ -13,10 +13,12 @@
       <header class="hero">
         <div class="hero-top">
           <h1 class="game-title">激光反射</h1>
-          <button class="mute icon-button" type="button"></button>
+          <div class="hero-buttons">
+            <button class="coin-pill" type="button"></button>
+            <button class="mute icon-button" type="button"></button>
+          </div>
         </div>
         <div class="hero-beam" aria-hidden="true"></div>
-        <p class="tagline">转动镜子，把激光引到每一颗水晶上。</p>
         <div class="hero-actions">
           <button id="resume" class="primary" type="button"></button>
           <span class="total"><span class="star earned" aria-hidden="true"></span><span id="total-stars"></span></span>
@@ -24,42 +26,38 @@
         <p id="select-note" role="status"></p>
       </header>
       <section id="daily-card" aria-labelledby="daily-title">
-        <div class="daily-top">
-          <h2 id="daily-title">今日一题</h2>
-          <span id="daily-meta"></span>
-        </div>
-        <p id="daily-summary"></p>
-        <pre id="daily-share" hidden></pre>
-        <div class="daily-actions">
-          <button id="daily-start" type="button"></button>
-          <button id="daily-copy" class="icon-button" type="button" hidden></button>
-          <span id="daily-copied" role="status"></span>
-        </div>
-      </section>
-      <div id="chapters"></div>
-      <section id="shop" aria-labelledby="shop-title">
-        <div class="chapter-header">
-          <h2 id="shop-title">商店</h2>
-          <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="shop-coins"></span></span>
-        </div>
-        <p class="shop-note">玩每日一题和第一次过关能拿金币。道具只能在闯关里用。</p>
-        <div id="draw-box">
-          <div id="draw-stage" aria-hidden="true"></div>
-          <div class="draw-text">
-            <h3>幸运抽奖</h3>
-            <p id="draw-odds"></p>
+        <div class="daily-text">
+          <div class="daily-top">
+            <h2 id="daily-title">今日一题</h2>
+            <span id="daily-meta"></span>
           </div>
-          <button id="draw" type="button"></button>
+          <p id="daily-summary"></p>
         </div>
-        <p id="draw-result" role="status"></p>
-        <div id="shop-items"></div>
+        <button id="daily-start" type="button"></button>
+        <button id="daily-copy" class="icon-button" type="button" hidden></button>
+        <pre id="daily-share" hidden></pre>
+        <span id="daily-copied" role="status"></span>
+      </section>
+      <section id="chapters" aria-live="polite">
+        <div class="chapter-pager">
+          <button id="chapter-prev" class="icon-button" type="button"></button>
+          <div class="chapter-title">
+            <h2 id="chapter-name"></h2>
+            <span id="chapter-gate" class="gate"></span>
+          </div>
+          <button id="chapter-next" class="icon-button" type="button"></button>
+        </div>
+        <div id="chapter-tiles" class="tiles"></div>
       </section>
     </main>
 
     <main id="game-screen" hidden>
       <header id="hud">
+        <button id="back" class="icon-button" type="button"></button>
         <h1><span id="level-number"></span><span id="level-name"></span></h1>
         <div id="pips" role="img"></div>
+        <button class="coin-pill" type="button"></button>
+        <button class="mute icon-button" type="button"></button>
       </header>
       <canvas
         id="board"
@@ -73,29 +71,51 @@
         <span id="stars" role="img"></span>
       </div>
       <p id="status" role="status"></p>
-      <p id="reward" role="status"></p>
-      <div id="result" hidden>
-        <pre id="result-share"></pre>
-        <div class="daily-actions">
-          <button id="result-copy" class="primary icon-button" type="button"></button>
-          <span id="result-copied" role="status"></span>
-        </div>
-      </div>
-      <div id="tools">
-        <button id="hint" class="icon-button tool" type="button"></button>
-        <button id="preview" class="icon-button tool" type="button"></button>
-        <button id="undo" class="icon-button tool" type="button"></button>
-        <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="game-coins"></span></span>
-      </div>
       <footer id="footer">
-        <button id="back" class="icon-button" type="button"></button>
-        <button class="mute icon-button" type="button"></button>
+        <div id="tools">
+          <button id="hint" class="icon-button tool" type="button"></button>
+          <button id="preview" class="icon-button tool" type="button"></button>
+          <button id="undo" class="icon-button tool" type="button"></button>
+        </div>
         <span class="spacer"></span>
         <button id="restart" class="icon-button" type="button"></button>
         <button id="skip" class="icon-button" type="button"></button>
         <button id="next" class="primary icon-button" type="button" hidden></button>
       </footer>
     </main>
+
+    <dialog id="sheet" aria-labelledby="sheet-title">
+      <div class="sheet-body">
+        <header class="sheet-head">
+          <h2 id="sheet-title"></h2>
+          <span class="coin-balance"><span class="coin" aria-hidden="true"></span><span id="sheet-coins"></span></span>
+          <button id="sheet-close" class="icon-button" type="button"></button>
+        </header>
+        <p id="sheet-reward"></p>
+        <div id="sheet-daily" hidden>
+          <pre id="sheet-share"></pre>
+          <div class="sheet-copy">
+            <button id="sheet-copy" class="icon-button" type="button"></button>
+            <span id="sheet-copied" role="status"></span>
+          </div>
+        </div>
+        <div id="sheet-shop">
+          <div id="item-table"></div>
+          <p class="shop-note" id="item-rules"></p>
+          <div id="draw-box">
+            <div id="draw-stage" aria-hidden="true"></div>
+            <div class="draw-text">
+              <h3>幸运抽奖</h3>
+              <p id="draw-odds"></p>
+            </div>
+            <button id="draw" type="button"></button>
+          </div>
+          <p id="draw-result" role="status"></p>
+          <div id="skin-row"></div>
+        </div>
+        <button id="sheet-next" class="primary" type="button"></button>
+      </div>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

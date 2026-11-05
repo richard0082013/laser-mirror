@@ -342,7 +342,7 @@ export function startGame(
     });
     ui.stars.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
     ui.stepCount.textContent = `步数 ${steps}`;
-    ui.parNote.textContent = assisted ? '用过提示或预判，最多 2 星' : `${level.par} 步内得 3 星`;
+    ui.parNote.textContent = assisted ? '用过辅助，最多 2 星' : `${level.par} 步内得 3 星`;
     ui.inventoryNote.textContent = inventory > 0 ? `还能放 ${left} 面镜子` : '';
     ui.score.classList.toggle('won', celebrated);
   }
