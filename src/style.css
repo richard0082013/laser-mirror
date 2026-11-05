@@ -261,6 +261,20 @@ h2 {
   background: var(--star);
 }
 
+/* 空心目标星：外面一层星形，里面盖一层背景色 */
+.star.target {
+  position: relative;
+  background: var(--star);
+}
+
+.star.target::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: #1a1a4a;
+  clip-path: inherit;
+}
+
 /* 关卡页 */
 
 /* 撑满屏幕：顶部和棋盘贴上面，按钮贴下面，切关时都不动 */
@@ -558,6 +572,21 @@ h2 {
   padding-block: 4px;
   color: var(--muted);
   font-size: 0.8125rem;
+}
+
+#shop-toggle {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid rgba(170, 176, 220, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+#shop-toggle[hidden] {
+  display: none;
 }
 
 #install-row,

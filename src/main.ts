@@ -57,6 +57,7 @@ import {
   totalStars,
 } from './progress';
 import { type CardInput, drawCard, saveCard } from './shareCard';
+import { mechanicHint } from './mechanics';
 import { createSound } from './sound';
 
 function requireElement<T extends Element>(selector: string): T {
@@ -131,6 +132,7 @@ const sheetCopied = requireElement<HTMLElement>('#sheet-copied');
 const sheetImage = requireElement<HTMLButtonElement>('#sheet-image');
 const dailyInvite = requireElement<HTMLElement>('#daily-invite');
 const inviteGo = requireElement<HTMLButtonElement>('#invite-go');
+const shopToggle = requireElement<HTMLButtonElement>('#shop-toggle');
 const sheetShop = requireElement<HTMLElement>('#sheet-shop');
 const sheetNext = requireElement<HTMLButtonElement>('#sheet-next');
 const itemTable = requireElement<HTMLElement>('#item-table');
@@ -178,6 +180,7 @@ function applyStaticText(): void {
   requireElement('#invite-title').textContent = text.inviteTitle;
   requireElement('#invite-body').textContent = text.inviteBody;
   setLabelButton(inviteGo, 'play', text.inviteAction);
+  setLabelButton(shopToggle, 'gift', text.itemsOpen);
   setIconButton(dailyCopy, 'copy', text.copyShare);
   setIconButton(sheetClose, 'close', text.close);
   setIconButton(dailyHistory, 'history', text.historyOpen);
@@ -275,16 +278,27 @@ function chapterOf(level: Level) {
 
 function goToSelect(note = ''): void {
   selectNote = note;
-  if (location.hash === '') route();
-  else location.hash = '';
+  if (location.hash === '') {
+    route();
+    return;
+  }
+  // 直接写 location.hash = '' 会在网址末尾留一个 #
+  history.pushState(null, '', `${location.pathname}${location.search}`);
+  route();
 }
 
 /** 去下一关；下一章星数不够时回选关页，并说明还差多少。 */
 function goAfter(level: Level): void {
   const next = levelAfter(level);
   if (!next) {
-    const perfect = totalStars(progress) === MAX_STARS;
-    goToSelect(perfect ? t().allPerfect : t().allDone);
+    const text = t();
+    openSheet({
+      mode: 'confirm',
+      title: text.endingTitle,
+      text: text.endingBody(totalStars(progress), MAX_STARS),
+      nextLabel: text.backHome,
+      onNext: () => goToSelect(),
+    });
   } else if (isUnlocked(chapters, progress, next.id)) {
     location.hash = `#${next.id}`;
   } else {
@@ -441,11 +455,9 @@ function resetGameScreen(daily: boolean, freeHint = false): void {
 
 function dailyIntro(level: Level, friendSteps: number | null): string {
   const text = t();
-  const rows = level.grid.join('');
   return [
-    friendSteps ? text.challengeIntro(friendSteps) : text.dailyHint(level.inventory ?? 0),
-    rows.includes('O') ? text.dailyPortalNote : '',
-    rows.includes('x') ? text.dailySwitchNote : '',
+    friendSteps ? text.challengeIntro(friendSteps) : text.dailyHint(0),
+    mechanicHint(level) ?? '',
   ].filter(Boolean).join(' ');
 }
 
@@ -506,7 +518,7 @@ function showGame(level: Level): void {
   levelName.textContent = name;
   document.title = `${name} | ${text.title}`;
 
-  const intro = levelText(level)?.hint;
+  const intro = levelText(level)?.hint ?? mechanicHint(level);
   game = startGame(level, ui, sound, {
     ...(intro ? { intro } : {}),
     teach: progress.levels[level.id] === undefined,
@@ -883,7 +895,13 @@ function openSheet({ mode, title, invite = false, card, reward = '', text = '', 
   sheetText.textContent = text;
   sheetText.hidden = text === '';
   sheetDaily.hidden = mode !== 'daily';
-  sheetShop.hidden = mode === 'daily' || mode === 'history' || mode === 'confirm' || mode === 'win-plain';
+  // 过关面板默认只有星星、金币和下一关，想买道具再点开，不会误花金币
+  sheetShop.hidden = mode !== 'shop';
+  shopToggle.hidden = mode !== 'win';
+  shopToggle.onclick = () => {
+    shopToggle.hidden = true;
+    sheetShop.hidden = false;
+  };
   dailyInvite.hidden = !invite;
   inviteGo.onclick = () => {
     analytics.track('daily-invite');
@@ -989,7 +1007,9 @@ function renderSelect(): void {
   refreshCoins();
 
   requireElement('#total-stars').textContent = `${totalStars(progress)} / ${MAX_STARS}`;
-  requireElement('#select-note').textContent = selectNote;
+  const allRecorded = allLevels.every(({ id }) => (progress.levels[id]?.stars ?? 0) > 0);
+  const standing = !allRecorded ? '' : totalStars(progress) === MAX_STARS ? t().allPerfect : t().allDone;
+  requireElement('#select-note').textContent = selectNote || standing;
 
   const resume = requireElement<HTMLButtonElement>('#resume');
   resume.hidden = !next;
@@ -1001,7 +1021,7 @@ function renderSelect(): void {
   }
 
   // 只显示一章，手机上不用滚动；默认停在接下来要玩的那一章
-  const nextChapter = next ? chapters.findIndex(({ levels }) => levels.includes(next)) : chapters.length - 1;
+  const nextChapter = next ? chapters.findIndex(({ levels }) => levels.includes(next)) : 0;
   shownChapter = Math.max(0, nextChapter);
   renderChapter(next);
 }

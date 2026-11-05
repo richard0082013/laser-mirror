@@ -40,8 +40,6 @@ export type Messages = {
   dailyHint: (inventory: number) => string;
   dailyDoneTitle: (stars: number) => string;
   backHome: string;
-  dailyPortalNote: string;
-  dailySwitchNote: string;
 
   historyOpen: string;
   historyTitle: string;
@@ -146,6 +144,19 @@ export type Messages = {
   inviteTitle: string;
   inviteBody: string;
   inviteAction: string;
+  itemsOpen: string;
+  endingTitle: string;
+  endingBody: (stars: number, max: number) => string;
+  mechanics: {
+    place: (count: number) => string;
+    splitter: string;
+    filter: string;
+    violet: string;
+    color: string;
+    portal: string;
+    door: string;
+    oneway: string;
+  };
 
   chapterNames: readonly string[];
   levels: Record<string, { name: string; hint?: string }>;

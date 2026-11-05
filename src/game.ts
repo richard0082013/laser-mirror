@@ -371,8 +371,10 @@ export function startGame(
     ui.status.classList.toggle('won', celebrated);
 
     // 过关前显示按现在的步数还能拿几星，让玩家看到每多点一次的代价
+    // 过关前是空心的目标星：还能拿几颗；过关才真正点亮，不和“已获得”混淆
     Array.from(ui.stars.children).forEach((star, index) => {
-      star.classList.toggle('earned', index < stars);
+      star.classList.toggle('earned', celebrated && index < stars);
+      star.classList.toggle('target', !celebrated && index < stars);
     });
     ui.stars.setAttribute('aria-label', celebrated ? text.starsWonLabel(stars) : text.starsNowLabel(stars));
     ui.stepCount.textContent = text.steps(steps);
@@ -523,6 +525,7 @@ export function startGame(
       focus,
       hint,
       teach,
+      teachTap: level.teach === 'tap' || level.teach === 'switch',
       sweep,
       ghost,
       skin,

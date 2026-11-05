@@ -8,14 +8,14 @@ import { solve } from '../src/scoring';
 
 type Theme = 'mirrors' | 'splitter' | 'placing' | 'colors' | 'portal' | 'switch' | 'mixed' | 'oneway';
 
-const WIDTH = 8;
-const HEIGHT = 7;
-const SECONDS_PER_THEME = 30;
+/** 第一个尺寸用于每日题；后面章节用大一点的地图，才放得下更长的路线。 */
+const SIZES: readonly (readonly [number, number])[] = [[8, 7], [9, 7], [9, 8], [10, 8]];
+const SECONDS_PER_THEME = 70;
 const KEEP_PER_BUCKET = 30;
 /** 随手乱点 2 倍最少步数就过关的概率不能超过这个值。 */
 const MAX_LUCKY_RATE = 0.08;
 /** 放镜子的题状态很多，搜不完的直接放弃。 */
-const MAX_STATES = 4000;
+const MAX_STATES = 30000;
 
 function createRandom(seed: number): (n: number) => number {
   let state = seed;
@@ -28,6 +28,7 @@ function createRandom(seed: number): (n: number) => number {
 }
 
 function makeRows(theme: Theme, random: (n: number) => number): { rows: string[]; inventory: number } {
+  const [WIDTH, HEIGHT] = SIZES[random(SIZES.length)] ?? [8, 7];
   const board = Array.from({ length: HEIGHT }, (_, y) =>
     Array.from({ length: WIDTH }, (_, x) => (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1 ? '#' : '.')),
   );
@@ -58,12 +59,12 @@ function makeRows(theme: Theme, random: (n: number) => number): { rows: string[]
   } else if (theme === 'oneway') {
     put(pick('>^v<'));
     repeat(1 + random(3), 'T');
-    repeat(2 + random(4), '/\\');
-    repeat(1 + random(3), 'uU');
+    repeat(4 + random(6), '/\\');
+    repeat(2 + random(3), 'uU');
   } else if (theme === 'portal' || theme === 'switch' || theme === 'mixed') {
     put(pick('>^v<'));
-    repeat(1 + random(2), 'T');
-    repeat(3 + random(4), '/\\');
+    repeat(1 + random(3), 'T');
+    repeat(5 + random(6), '/\\');
     if (theme !== 'switch') {
       put('O');
       put('O');
@@ -209,7 +210,7 @@ export function luckyRate(start: Grid, inventory: number, par: number, random: (
   return wins / TRIALS;
 }
 
-const themes: readonly Theme[] = ['mirrors', 'splitter', 'placing', 'colors', 'portal', 'mixed', 'oneway'];
+const themes: readonly Theme[] = ['splitter', 'placing', 'colors', 'portal', 'switch', 'mixed', 'oneway'];
 const KEEP_PER_TRICK = 25;
 const output: unknown[] = [];
 
@@ -227,7 +228,7 @@ themes.forEach((theme, themeIndex) => {
     if (countTargets(grid) === 0 || isSolved(grid, trace)) continue;
 
     const clicks = solve(grid, inventory);
-    if (!clicks || clicks.length < 3 || clicks.length > 7) continue;
+    if (!clicks || clicks.length < 3 || clicks.length > 9) continue;
     const par = clicks.length;
     const bucket = buckets.get(par) ?? [];
 

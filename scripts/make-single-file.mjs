@@ -33,7 +33,8 @@ html = html.replace('</body>', () => `<script type="module">${moduleScript}</scr
 html = html
   .replace(/<link rel="manifest"[^>]*>\s*/, '')
   .replace(/<link rel="(apple-touch-icon|icon)"[^>]*>\s*/g, '')
-  .replace(/<meta name="apple-mobile-web-app-capable"[^>]*>\s*/, '');
+  .replace(/<meta name="apple-mobile-web-app-capable"[^>]*>\s*/, '')
+  .replace(/<meta (?:property="og:|name="twitter:)[^>]*>\s*/g, '');
 
 if (fragment) {
   html = html

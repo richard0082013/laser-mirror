@@ -56,6 +56,8 @@ export type Frame = {
   sweep: number | null;
   /** 第一次玩时标出来的格子。 */
   teach: Position | null;
+  /** 标的是要点的格子（水波）；否则只是“认识一下”（不发光的虚线圈，免得像已点亮）。 */
+  teachTap: boolean;
   /** 预判看到的光路：点了那个格子之后光会怎么走。 */
   ghost: readonly Segment[] | null;
   skin: SkinId;
@@ -610,8 +612,20 @@ function drawSweep(ctx: CanvasRenderingContext2D, { sweep, beam }: Frame): void 
 }
 
 /** 向外扩散的圆环，像手指点水，告诉玩家看这里。 */
-function drawTeach(ctx: CanvasRenderingContext2D, { teach, time, still }: Frame): void {
-  if (!teach) return;
+function drawTeachMark(ctx: CanvasRenderingContext2D, { teach, teachTap, time, still }: Frame): void {
+  if (!teach || teachTap) return;
+  ctx.strokeStyle = rgba(FOCUS, 0.9);
+  ctx.lineWidth = 0.035;
+  ctx.setLineDash([0.12, 0.09]);
+  ctx.lineDashOffset = still ? 0 : -time * 0.5;
+  ctx.beginPath();
+  ctx.arc(teach.x + 0.5, teach.y + 0.5, 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawTeach(ctx: CanvasRenderingContext2D, { teach, teachTap, time, still }: Frame): void {
+  if (!teach || !teachTap) return;
   const cx = teach.x + 0.5;
   const cy = teach.y + 0.5;
   glow(ctx, cx, cy, 0.7, FOCUS, 0.3);
@@ -796,6 +810,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
 
       useCellUnits(main);
       if (frame.skin === 'gold') drawGoldCore(main, frame);
+      drawTeachMark(main, frame);
       frame.grid.forEach((row, y) => row.forEach((cell, x) => {
         if (cell.kind === 'emitter') drawEmitter(main, x, y, cell.direction, cell.color);
       }));
