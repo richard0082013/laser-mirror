@@ -25,8 +25,8 @@ describe('dailyPuzzle', () => {
 
   it('第一天是第 1 期，题库用完后从头循环', () => {
     expect(dailyPuzzle('2026-11-05').issue).toBe(1);
-    expect(dailyPuzzle('2026-12-05').issue).toBe(31);
-    expect(dailyPuzzle('2026-12-05').level.grid).toEqual(dailyPuzzle('2026-11-05').level.grid);
+    expect(dailyPuzzle('2027-01-04').issue).toBe(61);
+    expect(dailyPuzzle('2027-01-04').level.grid).toEqual(dailyPuzzle('2026-11-05').level.grid);
   });
 
   it('手机时钟比第 1 期还早时也能拿到题', () => {
@@ -55,9 +55,9 @@ describe('shareText', () => {
 });
 
 describe('每日题库', () => {
-  it('有 30 道题，互不相同', () => {
-    expect(dailyMaps).toHaveLength(30);
-    expect(new Set(dailyMaps.map(({ grid }) => grid.join())).size).toBe(30);
+  it('有 60 道题，互不相同', () => {
+    expect(dailyMaps).toHaveLength(60);
+    expect(new Set(dailyMaps.map(({ grid }) => grid.join())).size).toBe(60);
   });
 
   it.each(dailyMaps.map((map, index) => ({ ...map, index: index + 1 })))('第 $index 题', ({ grid, par, inventory = 0 }) => {

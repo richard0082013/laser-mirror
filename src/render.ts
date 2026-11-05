@@ -252,6 +252,80 @@ function drawMirror(
   ctx.restore();
 }
 
+const PORTAL_COLORS: Record<string, Rgb> = { O: [176, 120, 255], Q: [255, 170, 70] };
+
+function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, pair: string, time: number, still: boolean): void {
+  const cx = x + 0.5;
+  const cy = y + 0.5;
+  const color = PORTAL_COLORS[pair] ?? WHITE;
+  const spin = still ? 0 : time * 1.8;
+
+  ctx.fillStyle = '#0a0a26';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  glow(ctx, cx, cy, 0.42, color, 0.55);
+
+  ctx.strokeStyle = rgba(color, 0.95);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i += 1) {
+    const start = spin + (i * Math.PI * 2) / 3;
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 0.36, start, start + 1.5);
+    ctx.stroke();
+    ctx.lineWidth = 0.03;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 0.2, -start, -start + 1.2);
+    ctx.stroke();
+  }
+}
+
+function drawSwitch(ctx: CanvasRenderingContext2D, x: number, y: number, on: boolean): void {
+  const cx = x + 0.5;
+  const cy = y + 0.5;
+  const color: Rgb = on ? [90, 240, 170] : [255, 120, 110];
+
+  ctx.fillStyle = '#23264f';
+  ctx.fillRect(x + 0.08, y + 0.08, 0.84, 0.84);
+  ctx.strokeStyle = 'rgba(180, 190, 255, 0.5)';
+  ctx.lineWidth = 0.025;
+  ctx.strokeRect(x + 0.08, y + 0.08, 0.84, 0.84);
+
+  glow(ctx, cx, cy, 0.42, color, 0.4);
+  ctx.fillStyle = rgba(mix(color, WHITE, 0.25), 1);
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = rgba(color, 1);
+  ctx.lineWidth = 0.04;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.3, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawDoor(ctx: CanvasRenderingContext2D, x: number, y: number, open: boolean): void {
+  if (open) {
+    ctx.strokeStyle = 'rgba(90, 240, 170, 0.55)';
+    ctx.lineWidth = 0.03;
+    ctx.setLineDash([0.08, 0.08]);
+    ctx.strokeRect(x + 0.06, y + 0.06, 0.88, 0.88);
+    ctx.setLineDash([]);
+    return;
+  }
+  ctx.fillStyle = '#3a2a4a';
+  ctx.fillRect(x + 0.04, y + 0.04, 0.92, 0.92);
+  ctx.strokeStyle = 'rgba(255, 120, 110, 0.9)';
+  ctx.lineWidth = 0.055;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (const bar of [0.25, 0.5, 0.75]) {
+    ctx.moveTo(x + bar, y + 0.14);
+    ctx.lineTo(x + bar, y + 0.86);
+  }
+  ctx.stroke();
+}
+
 function drawFocusRing(ctx: CanvasRenderingContext2D, { x, y }: Position): void {
   ctx.strokeStyle = rgba(FOCUS, 0.95);
   ctx.lineWidth = 0.035;
@@ -632,6 +706,9 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
         if (cell.kind === 'target') drawCrystal(main, x, y, cell.color, frame.charges.get(cellKey(x, y)) ?? 0);
         if (cell.kind === 'mirror') drawMirror(main, x, y, angle, cell.placed ? 'placed' : 'fixed');
         if (cell.kind === 'splitter') drawMirror(main, x, y, angle, 'splitter');
+        if (cell.kind === 'portal') drawPortal(main, x, y, cell.pair, frame.time, frame.still);
+        if (cell.kind === 'switch') drawSwitch(main, x, y, frame.grid.flat().some((other) => other.kind === 'door' && other.open));
+        if (cell.kind === 'door') drawDoor(main, x, y, cell.open);
       }));
 
       if (frame.focus) {

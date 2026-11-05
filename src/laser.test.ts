@@ -30,7 +30,7 @@ describe('parseGrid', () => {
   });
 
   it('拒绝未知字符、不等长的行和空地图', () => {
-    expect(() => parseGrid(['.x'])).toThrow('未知字符');
+    expect(() => parseGrid(['.?'])).toThrow('未知字符');
     expect(() => parseGrid(['..', '.'])).toThrow('长度');
     expect(() => parseGrid([])).toThrow('不能为空');
   });
@@ -207,5 +207,55 @@ describe('isSolved', () => {
 
   it('没有目标的地图不算过关', () => {
     expect(solved(['>..'])).toBe(false);
+  });
+});
+
+describe('传送门', () => {
+  it('光从一个进去，从另一个沿原方向出来，还能点亮水晶', () => {
+    const grid = parseGrid(['>.O.', '....', '.O.T']);
+    const trace = traceLasers(grid);
+    expect(isSolved(grid, trace)).toBe(true);
+    expect(trace.segments.map(({ to }) => to)).toEqual([{ x: 2.5, y: 0.5 }, { x: 4, y: 2.5 }]);
+  });
+
+  it('两段光的距离是连着算的', () => {
+    const [first, second] = traceLasers(parseGrid(['>.O.', '.O..'])).segments;
+    expect(second?.start).toBe(first?.length);
+    expect(second?.from).toEqual({ x: 1.5, y: 1.5 });
+  });
+
+  it('两对传送门互不串线', () => {
+    const grid = parseGrid(['>O.Q', '...T', '.O.Q']);
+    const trace = traceLasers(grid);
+    expect(trace.segments[1]?.from).toEqual({ x: 1.5, y: 2.5 });
+  });
+
+  it('光绕回传送门时不会死循环', () => {
+    const grid = parseGrid(['>.O/', '...O', '...\\']);
+    expect(() => traceLasers(grid)).not.toThrow();
+  });
+
+  it('传送门不能点', () => {
+    expect(interact(parseGrid(['O.O']), { x: 0, y: 0 }, 1)).toBeNull();
+  });
+});
+
+describe('开关和门', () => {
+  it('关着的门和开关都挡光，开着的门放行', () => {
+    expect(isSolved(parseGrid(['>DT']), traceLasers(parseGrid(['>DT'])))).toBe(false);
+    expect(isSolved(parseGrid(['>dT']), traceLasers(parseGrid(['>dT'])))).toBe(true);
+    expect(isSolved(parseGrid(['>xT']), traceLasers(parseGrid(['>xT'])))).toBe(false);
+  });
+
+  it('点开关切换全部门，原地图不变', () => {
+    const grid = parseGrid(['xDd']);
+    const next = interact(grid, { x: 0, y: 0 }, 0);
+    expect(next?.[0]?.[1]).toEqual({ kind: 'door', open: true });
+    expect(next?.[0]?.[2]).toEqual({ kind: 'door', open: false });
+    expect(grid[0]?.[1]).toEqual({ kind: 'door', open: false });
+  });
+
+  it('门本身不能点', () => {
+    expect(interact(parseGrid(['xD']), { x: 1, y: 0 }, 0)).toBeNull();
   });
 });

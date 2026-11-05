@@ -79,6 +79,25 @@ describe('minimumSteps', () => {
   });
 });
 
+describe('求解器和新元素', () => {
+  it('开关不在光路上也能找到解', () => {
+    expect(minimumSteps(parseGrid(['>DT', '...', '..x']))).toBe(1);
+  });
+
+  it('要先开门再转镜子', () => {
+    expect(minimumSteps(parseGrid(['>D\\', 'x..', '..T']))).toBe(1);
+    expect(minimumSteps(parseGrid(['>D/', 'x..', '..T']))).toBe(2);
+  });
+
+  it('走传送门之后的镜子也能算到', () => {
+    expect(minimumSteps(parseGrid(['>O..', '.O/.', '..T.']))).toBe(1);
+  });
+
+  it('怎么点都打不开时返回 null', () => {
+    expect(minimumSteps(parseGrid(['>DT']))).toBeNull();
+  });
+});
+
 describe('用过提示', () => {
   it('最多 2 星，步数多了照常降星', () => {
     expect(starsFor(3, 3, true)).toBe(2);

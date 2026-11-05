@@ -146,7 +146,7 @@ export function startGame(
   const canInteract = (position: Position): boolean => {
     if (solved) return false;
     const cell = grid[position.y]?.[position.x];
-    return cell?.kind === 'empty' ? canPlace() : isRotatable(grid, position);
+    return cell?.kind === 'empty' ? canPlace() : cell?.kind === 'switch' || isRotatable(grid, position);
   };
 
   /** 放下或收回镜子之后，让角度表和地图对上。 */
@@ -236,7 +236,7 @@ export function startGame(
       sound.remove();
     } else {
       sound.rotate();
-      mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
+      if (isRotatable(grid, position)) mirrorGoals.set(key, (mirrorGoals.get(key) ?? 0) + Math.PI / 2);
     }
 
     refreshTrace();
