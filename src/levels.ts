@@ -1,17 +1,15 @@
 export type Level = {
+  /** 名字和说明在 locales/ 里，按这个 id 查。 */
   id: string;
-  name: string;
   grid: readonly string[];
   /** 过关最少要点几次，测试会核对。 */
   par: number;
   /** 这关能放几面镜子。 */
   inventory?: number;
-  /** 这关第一次出现新东西时的说明。 */
-  hint?: string;
 };
 
+/** 章节名在 locales/ 的 chapterNames 里，顺序和这里一样。 */
 export type Chapter = {
-  name: string;
   /** 累计多少星才能进这一章。 */
   requiredStars: number;
   levels: readonly Level[];
@@ -19,14 +17,11 @@ export type Chapter = {
 
 export const chapters: readonly Chapter[] = [
   {
-    name: '镜子',
     requiredStars: 0,
     levels: [
       {
         id: 'first-light',
-        name: '第一束光',
         par: 2,
-        hint: '点击镜子转向，把激光引到水晶上。',
         grid: [
           '########',
           '#>.../.#',
@@ -39,9 +34,7 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'two-targets',
-        name: '两颗水晶',
         par: 3,
-        hint: '一束光可以穿过水晶，继续照亮下一颗。',
         grid: [
           '########',
           '#>../.T#',
@@ -54,9 +47,7 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'back-door',
-        name: '绕到背后',
         par: 3,
-        hint: '想拿满星，动手前先看好路线。光路外的镜子也算步数。',
         grid: [
           '########',
           '#...T.\\#',
@@ -69,7 +60,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'detour',
-        name: '弯路',
         par: 4,
         grid: [
           '#########',
@@ -83,7 +73,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'maze-of-glass',
-        name: '镜中迷宫',
         par: 5,
         grid: [
           '#########',
@@ -98,7 +87,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'three-lights',
-        name: '三颗水晶',
         par: 7,
         grid: [
           '##########',
@@ -114,15 +102,12 @@ export const chapters: readonly Chapter[] = [
     ],
   },
   {
-    name: '摆放',
     requiredStars: 8,
     levels: [
       {
         id: 'bring-a-mirror',
-        name: '自带镜子',
         par: 3,
         inventory: 1,
-        hint: '点击空地放一面镜子。再点转向，第三下收回。',
         grid: [
           '########',
           '#./....#',
@@ -135,7 +120,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'two-in-hand',
-        name: '手里两面',
         par: 5,
         inventory: 2,
         grid: [
@@ -150,7 +134,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'narrow-way',
-        name: '窄路',
         par: 7,
         inventory: 2,
         grid: [
@@ -167,14 +150,11 @@ export const chapters: readonly Chapter[] = [
     ],
   },
   {
-    name: '分光',
     requiredStars: 14,
     levels: [
       {
         id: 'split-in-two',
-        name: '一分为二',
         par: 3,
-        hint: '分光镜把一束光分成两束：一束直行，一束反射。它也能转向。',
         grid: [
           '########',
           '#\\..T..#',
@@ -187,7 +167,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'fork',
-        name: '岔路',
         par: 4,
         grid: [
           '#########',
@@ -201,7 +180,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'two-splitters',
-        name: '两次分光',
         par: 6,
         grid: [
           '#########',
@@ -217,14 +195,11 @@ export const chapters: readonly Chapter[] = [
     ],
   },
   {
-    name: '颜色',
     requiredStars: 20,
     levels: [
       {
         id: 'red-and-blue',
-        name: '红与蓝',
         par: 3,
-        hint: '红水晶只认红光，蓝水晶只认蓝光。',
         grid: [
           '########',
           '#\\..\\..#',
@@ -237,9 +212,7 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'filters',
-        name: '滤片',
         par: 5,
-        hint: '滤片只放同色的光过去，别的颜色会被挡住。',
         grid: [
           '#########',
           '#\\....#.#',
@@ -252,9 +225,7 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'violet',
-        name: '紫水晶',
         par: 6,
-        hint: '紫水晶要红蓝两束光都照到才亮。',
         grid: [
           '#########',
           '##...Y\\/#',
@@ -268,7 +239,6 @@ export const chapters: readonly Chapter[] = [
       },
       {
         id: 'full-spectrum',
-        name: '全光谱',
         par: 8,
         grid: [
           '##########',

@@ -12,10 +12,10 @@ import {
   totalStars,
 } from './progress';
 
-const level = (id: string): Level => ({ id, name: id, par: 1, grid: [] });
+const level = (id: string): Level => ({ id, par: 1, grid: [] });
 const chapters: Chapter[] = [
-  { name: '一', requiredStars: 0, levels: [level('a'), level('b')] },
-  { name: '二', requiredStars: 4, levels: [level('c')] },
+  { requiredStars: 0, levels: [level('a'), level('b')] },
+  { requiredStars: 4, levels: [level('c')] },
 ];
 
 function memoryStore(initial?: string): KeyValueStore & { saved: string | null } {

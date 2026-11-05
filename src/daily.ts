@@ -1,4 +1,5 @@
 import { dailyMaps } from './dailyLevels';
+import { t } from './i18n';
 import type { Level } from './levels';
 
 /** 第 1 期的日期。按玩家当地日期换题，和 Wordle 一样。 */
@@ -35,13 +36,9 @@ export function dailyPuzzle(date: string): DailyPuzzle {
     issue: Math.max(1, offset + 1),
     level: {
       id: `daily:${date}`,
-      name: '',
       grid: map.grid,
       par: map.par,
       ...(map.inventory ? { inventory: map.inventory } : {}),
-      hint: map.inventory
-        ? `今天所有人都玩这一题。空地上最多能放 ${map.inventory} 面镜子，步数越少越好。`
-        : '今天所有人都玩这一题。步数越少越好。',
     },
   };
 }
@@ -60,12 +57,13 @@ export function shareText({ issue, steps, par, attempts, streak, url }: ShareInp
   const good = '🟩'.repeat(Math.min(steps, par));
   const extra = '🟨'.repeat(Math.min(Math.max(0, steps - par), 12));
   const more = steps - par > 12 ? '…' : '';
-  const tries = attempts > 1 ? `，第 ${attempts} 次尝试` : '';
+  const text = t();
+  const tries = attempts > 1 ? text.shareTries(attempts) : '';
   return [
-    `激光反射 每日一题 第 ${issue} 期`,
-    `${steps} 步（最少 ${par} 步）${tries}`,
+    text.shareTitle(issue),
+    `${text.shareSteps(steps, par)}${tries}`,
     `${good}${extra}${more}`,
-    `连续 ${streak} 天`,
+    text.shareStreak(streak),
     url,
   ].join('\n');
 }

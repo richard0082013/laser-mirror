@@ -96,8 +96,9 @@ button:focus-visible {
 .hero-actions {
   margin-top: 14px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  gap: 8px 18px;
 }
 
 .total {
@@ -106,6 +107,35 @@ button:focus-visible {
   gap: 8px;
   font-size: 1.125rem;
   font-variant-numeric: tabular-nums;
+}
+
+#language {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+#language .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* 字号不到 16px 时 iOS 点开会自动放大页面 */
+#language-select {
+  min-height: 44px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+#language-select option {
+  color: #111;
 }
 
 #select-note {
@@ -867,6 +897,12 @@ h2 {
   font-weight: 600;
 }
 
+/* 英文标题的字母比两个汉字宽，字号要小一些，放不下时可以折行 */
+html[lang='en'] .game-title {
+  font-size: clamp(1.75rem, 8.5vw, 3.75rem);
+  letter-spacing: 0.01em;
+}
+
 /* 窄屏：标题让位给按钮 */
 @media (max-width: 440px) {
   #level-name {
@@ -875,7 +911,36 @@ h2 {
 }
 
 @media (max-width: 350px) {
-  #hud .mute {
+  #hud .mute,
+  #language .icon {
+    display: none;
+  }
+
+  .hero-actions {
+    gap: 8px 12px;
+  }
+}
+
+/* 很矮的屏幕：去掉次要文字，保证不用滚动 */
+@media (max-height: 620px) {
+  #select-screen {
+    gap: 12px;
+  }
+
+  .tile {
+    min-height: 56px;
+  }
+
+  .tile-name,
+  .item-detail {
+    display: none;
+  }
+
+  .item-card {
+    padding-block: 8px 6px;
+  }
+
+  #draw-result:empty {
     display: none;
   }
 }

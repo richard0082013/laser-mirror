@@ -27,6 +27,7 @@ import {
   startCooldown,
 } from './economy';
 import { type Game, type GameUi, startGame } from './game';
+import { getLocale, loadLocale, type Locale, LOCALES, saveLocale, setLocale, t } from './i18n';
 import { coinMark, icon, type IconName, setIconButton, setLabelButton, setPriceButton } from './icons';
 import { allLevels, chapters, type Level } from './levels';
 import {
@@ -58,6 +59,7 @@ function openStorage(): KeyValueStore | null {
 }
 
 const storage = openStorage();
+setLocale(loadLocale(storage, navigator.languages ?? []));
 const sound = createSound(storage);
 let progress = loadProgress(storage);
 let meta = expireItems(loadMeta(storage), localDateKey(new Date()));
@@ -109,29 +111,49 @@ const skinRow = requireElement<HTMLElement>('#skin-row');
 const drawButton = requireElement<HTMLButtonElement>('#draw');
 const drawStage = requireElement<HTMLElement>('#draw-stage');
 const drawResult = requireElement<HTMLElement>('#draw-result');
+const languageSelect = requireElement<HTMLSelectElement>('#language-select');
 const chapterPrev = requireElement<HTMLButtonElement>('#chapter-prev');
 const chapterNext = requireElement<HTMLButtonElement>('#chapter-next');
 
 const ITEM_IDS = ['hint', 'preview', 'undo'] as const;
-const ITEM_NAMES: Record<ItemId, string> = { hint: '提示', preview: '预判', undo: '撤销' };
-const ITEM_SHORT: Record<ItemId, string> = { hint: '下一步点哪', preview: '先看光路', undo: '退回一步' };
-
 const MAX_STARS = allLevels.length * 3;
 
 const ITEM_ICONS: Record<ItemId, IconName> = { hint: 'hint', preview: 'preview', undo: 'undo' };
-const COPY_LABEL = '复制成绩';
 /** 过关后先让玩家看一眼光效，再弹面板。 */
 const SHEET_DELAY_MS = 1000;
 
-setIconButton(backButton, 'levels', '选关');
-setIconButton(ui.restart, 'restart', '重新开始');
-setIconButton(skipButton, 'skip', '跳过这关');
-setIconButton(nextButton, 'next', '下一关');
-setIconButton(sheetCopy, 'copy', COPY_LABEL);
-setIconButton(dailyCopy, 'copy', COPY_LABEL);
-setIconButton(sheetClose, 'close', '关闭');
-setIconButton(chapterPrev, 'prev', '上一章');
-setIconButton(chapterNext, 'next', '下一章');
+const levelText = (level: Level) => t().levels[level.id];
+const chapterName = (index: number): string => t().chapterNames[index] ?? '';
+
+/** 页面上不随状态变化的文字。启动和切换语言时各写一次。 */
+function applyStaticText(): void {
+  const text = t();
+  document.documentElement.lang = text.htmlLang;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', text.description);
+  requireElement('#game-title').textContent = text.title;
+  requireElement('#daily-title').textContent = text.dailyTitle;
+  requireElement('#draw-title').textContent = text.drawTitle;
+  canvas.setAttribute('aria-label', text.boardLabel);
+  languageSelect.setAttribute('aria-label', text.languageLabel);
+
+  setIconButton(backButton, 'levels', text.back);
+  setIconButton(ui.restart, 'restart', text.restart);
+  setIconButton(skipButton, 'skip', text.skip);
+  setIconButton(nextButton, 'next', text.next);
+  setIconButton(sheetCopy, 'copy', text.copyShare);
+  setIconButton(dailyCopy, 'copy', text.copyShare);
+  setIconButton(sheetClose, 'close', text.close);
+  setIconButton(chapterPrev, 'prev', text.prevChapter);
+  setIconButton(chapterNext, 'next', text.nextChapter);
+
+  requireElement('#draw-odds').textContent = DRAW_TABLE
+    .map(({ prize, weight }) => text.oddsEntry(prizeName(prize), weight))
+    .join(text.listSeparator);
+  const cooldowns = ITEM_IDS
+    .map((item) => text.cooldownEntry(text.itemNames[item], ITEM_COOLDOWNS_MS[item] / 1000))
+    .join(text.listSeparator);
+  requireElement('#item-rules').textContent = text.itemRules(cooldowns);
+}
 
 /** 改完金币和道具都走这里，这样不会漏存档。 */
 function setMeta(next: Meta): void {
@@ -145,8 +167,8 @@ function refreshCoins(): void {
     const amount = document.createElement('span');
     amount.textContent = String(meta.coins);
     pill.replaceChildren(coinMark(), amount);
-    pill.setAttribute('aria-label', `金币 ${meta.coins}，打开商店`);
-    pill.title = '商店';
+    pill.setAttribute('aria-label', t().openShop(meta.coins));
+    pill.title = t().shop;
   });
   sheetCoins.textContent = String(meta.coins);
 }
@@ -189,10 +211,10 @@ async function copyShare(text: string, note: HTMLElement, button: HTMLButtonElem
   } catch {
     copied = copyWithSelection(text);
   }
-  note.textContent = copied ? '已复制，可以粘贴给朋友了。' : '没能自动复制，请手动选中成绩文字。';
+  note.textContent = copied ? t().copySuccess : t().copyFail;
   if (copied) {
-    setIconButton(button, 'check', '已复制');
-    window.setTimeout(() => setIconButton(button, 'copy', COPY_LABEL), 1500);
+    setIconButton(button, 'check', t().copied);
+    window.setTimeout(() => setIconButton(button, 'copy', t().copyShare), 1500);
   } else {
     onFail?.();
   }
@@ -217,13 +239,13 @@ function goAfter(level: Level): void {
   const next = levelAfter(level);
   if (!next) {
     const perfect = totalStars(progress) === MAX_STARS;
-    goToSelect(perfect ? '全部通关，星星也拿满了。' : '这是最后一关了。回去把星星拿满吧。');
+    goToSelect(perfect ? t().allPerfect : t().allDone);
   } else if (isUnlocked(chapters, progress, next.id)) {
     location.hash = `#${next.id}`;
   } else {
     const chapter = chapterOf(next);
     const missing = chapter ? starsNeeded(chapter, progress) : 0;
-    goToSelect(`还差 ${missing} 星才能进入“${chapter?.name ?? ''}”。回到前面的关卡，少走几步就能多拿星。`);
+    goToSelect(t().needStars(missing, chapter ? chapterName(chapters.indexOf(chapter)) : ''));
   }
 }
 
@@ -241,25 +263,26 @@ const secondsLeft = (item: ItemId): number => Math.ceil(cooldownLeft(meta, item,
 function toolBadge(item: ItemId): { badge: HTMLElement; label: string } {
   const badge = document.createElement('span');
   badge.className = 'badge';
-  const name = ITEM_NAMES[item];
+  const text = t();
+  const name = text.itemNames[item];
   const seconds = secondsLeft(item);
   if (seconds > 0) {
     badge.textContent = `${seconds}s`;
     badge.classList.add('cooling');
-    return { badge, label: `${name}，冷却中，还要 ${seconds} 秒` };
+    return { badge, label: text.itemCooling(name, seconds) };
   }
   if (item === 'hint' && freeHintLeft) {
-    badge.textContent = '免费';
+    badge.textContent = text.itemFree;
     badge.classList.add('free');
-    return { badge, label: `${name}，本关免费` };
+    return { badge, label: text.itemFreeLabel(name) };
   }
   const stock = meta.items[item];
   if (stock > 0) {
     badge.textContent = String(stock);
-    return { badge, label: `${name}，还有 ${stock} 个` };
+    return { badge, label: text.itemStock(name, stock) };
   }
   badge.append(coinMark(), String(ITEM_PRICES[item]));
-  return { badge, label: `${name}，${ITEM_PRICES[item]} 币用一次` };
+  return { badge, label: text.itemPay(name, ITEM_PRICES[item]) };
 }
 
 const canAfford = (item: ItemId): boolean => canUseItem(meta, item) || (item === 'hint' && freeHintLeft);
@@ -342,11 +365,13 @@ function resetGameScreen(daily: boolean): void {
 function showDaily(): void {
   const { date, issue, level } = dailyPuzzle(localDateKey(new Date()));
   resetGameScreen(true);
-  levelNumber.textContent = '今日一题';
-  levelName.textContent = `第 ${issue} 期`;
-  document.title = '今日一题 | 激光反射';
+  const text = t();
+  levelNumber.textContent = text.dailyHud;
+  levelName.textContent = text.issue(issue);
+  document.title = `${text.dailyTitle} | ${text.title}`;
 
   game = startGame(level, ui, sound, {
+    intro: text.dailyHint(level.inventory ?? 0),
     onFirstMove: () => setMeta(noteDailyAttempt(meta, date)),
     onWin: (stars, steps) => {
       const attempts = Math.max(1, attemptsToday(meta, date));
@@ -354,10 +379,10 @@ function showDaily(): void {
       ui.restart.hidden = true;
       openSheetSoon({
         mode: 'daily',
-        title: `今日完成，得 ${stars} 星`,
-        reward: `+${dailyReward(stars)} 金币`,
+        title: text.dailyDoneTitle(stars),
+        reward: text.reward(dailyReward(stars)),
         share: shareFor(date),
-        nextLabel: '回到首页',
+        nextLabel: text.backHome,
         onNext: () => goToSelect(),
       });
     },
@@ -371,11 +396,15 @@ function showGame(level: Level): void {
   resetGameScreen(false);
   ui.restart.hidden = false;
 
-  levelNumber.textContent = `第 ${allLevels.indexOf(level) + 1} 关`;
-  levelName.textContent = level.name;
-  document.title = `${level.name} | 激光反射`;
+  const text = t();
+  const name = levelText(level)?.name ?? '';
+  levelNumber.textContent = text.levelNumber(allLevels.indexOf(level) + 1);
+  levelName.textContent = name;
+  document.title = `${name} | ${text.title}`;
 
+  const intro = levelText(level)?.hint;
   game = startGame(level, ui, sound, {
+    ...(intro ? { intro } : {}),
     onPreviewShown: () => {
       spend('preview');
       beginCooldown('preview');
@@ -389,9 +418,9 @@ function showGame(level: Level): void {
       if (document.activeElement === canvas) nextButton.focus({ preventScroll: true });
       openSheetSoon({
         mode: 'win',
-        title: `过关，得 ${stars} 星`,
-        reward: reward > 0 ? `+${reward} 金币` : '',
-        nextLabel: '下一关',
+        title: text.winTitle(stars),
+        reward: reward > 0 ? text.reward(reward) : '',
+        nextLabel: text.nextLevel,
         onNext: () => goAfter(level),
       });
     },
@@ -431,11 +460,13 @@ function levelTile(level: Level, nextLevel: Level | undefined): HTMLElement {
   number.textContent = String(allLevels.indexOf(level) + 1);
   const name = document.createElement('span');
   name.className = 'tile-name';
-  name.textContent = level.name;
+  const text = t();
+  const levelNameText = levelText(level)?.name ?? '';
+  name.textContent = levelNameText;
   tile.append(number, name, starMarks(record?.stars ?? 0));
 
-  const state = !unlocked ? '未解锁' : record ? (record.stars === 0 ? '已跳过' : `${record.stars} 星`) : '未玩';
-  tile.setAttribute('aria-label', `第 ${number.textContent} 关 ${level.name}，${state}`);
+  const state = !unlocked ? text.tileLocked : record ? (record.stars === 0 ? text.tileSkipped : text.tileStars(record.stars)) : text.tileUnplayed;
+  tile.setAttribute('aria-label', text.tileLabel(allLevels.indexOf(level) + 1, levelNameText, state));
   if (unlocked) tile.addEventListener('click', () => { location.hash = `#${level.id}`; });
   return tile;
 }
@@ -446,17 +477,19 @@ function renderDailyCard(hasProgress: boolean): void {
   const result = meta.dailyResults[today];
   const streak = currentStreak(meta, today);
 
-  requireElement('#daily-meta').textContent = `第 ${issue} 期，连续 ${streak} 天`;
+  const text = t();
+  requireElement('#daily-meta').textContent = text.dailyMeta(issue, streak);
   requireElement('#daily-summary').textContent = result
-    ? `今天 ${result.steps} 步（最少 ${result.par} 步），明天有新题。`
-    : `所有人同一题，最少 ${level.par} 步，可得 ${dailyReward(1)} 到 ${dailyReward(3)} 币。`;
+    ? text.dailyDone(result.steps, result.par)
+    : text.dailyTodo(level.par, dailyReward(1), dailyReward(3));
 
   const start = requireElement<HTMLButtonElement>('#daily-start');
   const share = requireElement<HTMLElement>('#daily-share');
   const copied = requireElement<HTMLElement>('#daily-copied');
   start.hidden = Boolean(result);
-  setLabelButton(start, 'play', attemptsToday(meta, today) > 0 ? '继续' : '开始');
-  start.setAttribute('aria-label', attemptsToday(meta, today) > 0 ? '继续今日题' : '开始今日题');
+  const resumed = attemptsToday(meta, today) > 0;
+  setLabelButton(start, 'play', resumed ? text.dailyContinue : text.dailyStart);
+  start.setAttribute('aria-label', resumed ? text.dailyContinueLabel : text.dailyStartLabel);
   // 新玩家先从第 1 关学操作，玩过之后每日题才是主入口
   start.classList.toggle('primary', hasProgress);
   start.onclick = () => { location.hash = `#${DAILY_ROUTE}`; };
@@ -478,8 +511,10 @@ function shopButton(disabled: boolean, onClick: () => void): HTMLButtonElement {
 }
 
 function prizeName(prize: Prize): string {
-  if (prize.kind === 'coins') return `${prize.amount} 币`;
-  return prize.count > 1 ? `${ITEM_NAMES[prize.item]} ×${prize.count}` : ITEM_NAMES[prize.item];
+  const text = t();
+  if (prize.kind === 'coins') return text.prizeCoins(prize.amount);
+  const name = text.itemNames[prize.item];
+  return prize.count > 1 ? text.prizeMany(name, prize.count) : name;
 }
 
 function showOnStage(prize: Prize | null): void {
@@ -487,13 +522,6 @@ function showOnStage(prize: Prize | null): void {
   else if (prize.kind === 'coins') drawStage.replaceChildren(coinMark());
   else drawStage.replaceChildren(icon(ITEM_ICONS[prize.item]));
 }
-
-requireElement('#draw-odds').textContent = DRAW_TABLE
-  .map(({ prize, weight }) => `${prizeName(prize)} ${weight}%`)
-  .join('，');
-
-requireElement('#item-rules').textContent =
-  `道具当天有效，明天清零。用后冷却：${ITEM_IDS.map((item) => `${ITEM_NAMES[item]} ${ITEM_COOLDOWNS_MS[item] / 1000} 秒`).join('，')}。提示和预判用后这关最多 2 星。`;
 
 let drawing = false;
 const DRAW_SPIN_MS = 900;
@@ -517,7 +545,7 @@ drawButton.addEventListener('click', () => {
     showOnStage(result.prize);
     drawStage.classList.remove('spinning');
     drawStage.classList.add('revealed');
-    drawResult.textContent = `抽到 ${prizeName(result.prize)}`;
+    drawResult.textContent = t().drawGot(prizeName(result.prize));
     sound.crystal();
     refreshCoins();
     renderShop();
@@ -548,7 +576,8 @@ function itemCard(item: ItemId): HTMLButtonElement {
     renderShop();
   });
   card.className = 'item-card';
-  card.setAttribute('aria-label', `${ITEM_NAMES[item]}，有 ${meta.items[item]} 个，花 ${ITEM_PRICES[item]} 币买一个`);
+  const text = t();
+  card.setAttribute('aria-label', text.itemCard(text.itemNames[item], meta.items[item], ITEM_PRICES[item]));
 
   const mark = document.createElement('span');
   mark.className = 'item-mark';
@@ -559,10 +588,10 @@ function itemCard(item: ItemId): HTMLButtonElement {
   mark.append(stock);
   const name = document.createElement('span');
   name.className = 'item-name';
-  name.textContent = ITEM_NAMES[item];
+  name.textContent = text.itemNames[item];
   const detail = document.createElement('span');
   detail.className = 'item-detail';
-  detail.textContent = ITEM_SHORT[item];
+  detail.textContent = text.itemShort[item];
   const price = document.createElement('span');
   price.className = 'item-price';
   price.append(coinMark(), String(ITEM_PRICES[item]));
@@ -578,25 +607,26 @@ function renderSkinRow(): void {
     if (next) setMeta(next);
     renderShop();
   });
-  if (ownsGold) setLabelButton(button, wearingGold ? 'check' : 'sparkle', wearingGold ? '使用中' : '使用');
-  else setPriceButton(button, SKIN_PRICES.gold, `花 ${SKIN_PRICES.gold} 币买流金光束`);
-  if (wearingGold) button.setAttribute('aria-label', '正在使用流金光束，点一下换回原色');
+  const text = t();
+  if (ownsGold) setLabelButton(button, wearingGold ? 'check' : 'sparkle', wearingGold ? text.skinInUse : text.skinUse);
+  else setPriceButton(button, SKIN_PRICES.gold, text.skinBuy(SKIN_PRICES.gold));
+  if (wearingGold) button.setAttribute('aria-label', text.skinInUseLabel);
 
   const mark = document.createElement('span');
   mark.className = 'item-mark';
   mark.append(icon('sparkle'));
-  const text = document.createElement('div');
-  text.className = 'draw-text';
+  const words = document.createElement('div');
+  words.className = 'draw-text';
   const heading = document.createElement('h3');
-  heading.textContent = '流金光束';
+  heading.textContent = text.skinName;
   const detail = document.createElement('p');
-  detail.textContent = '金色光芯，不影响解题。下一关生效。';
-  text.append(heading, detail);
-  skinRow.replaceChildren(mark, text, button);
+  detail.textContent = text.skinDetail;
+  words.append(heading, detail);
+  skinRow.replaceChildren(mark, words, button);
 }
 
 function renderShop(): void {
-  setPriceButton(drawButton, DRAW_PRICE, `花 ${DRAW_PRICE} 币抽一次`);
+  setPriceButton(drawButton, DRAW_PRICE, t().drawPrice(DRAW_PRICE));
   drawButton.disabled = drawing || meta.coins < DRAW_PRICE;
   itemTable.replaceChildren(...ITEM_IDS.map(itemCard));
   renderSkinRow();
@@ -663,7 +693,7 @@ sheet.addEventListener('close', () => {
   if (!gameScreen.hidden && !isDailyGame) tickTools();
 });
 coinPills.forEach((pill) => {
-  pill.addEventListener('click', () => openSheet({ mode: 'shop', title: '商店' }));
+  pill.addEventListener('click', () => openSheet({ mode: 'shop', title: t().shop }));
 });
 
 let shownChapter = 0;
@@ -671,9 +701,9 @@ let shownChapter = 0;
 function renderChapter(next: Level | undefined): void {
   const chapter = chapters[shownChapter];
   if (!chapter) return;
-  requireElement('#chapter-name').textContent = `第 ${shownChapter + 1} 章：${chapter.name}`;
+  requireElement('#chapter-name').textContent = t().chapterTitle(shownChapter + 1, chapterName(shownChapter));
   const missing = starsNeeded(chapter, progress);
-  requireElement('#chapter-gate').textContent = missing > 0 ? `还差 ${missing} 星解锁` : '';
+  requireElement('#chapter-gate').textContent = missing > 0 ? t().chapterGate(missing) : '';
   chapterPrev.disabled = shownChapter === 0;
   chapterNext.disabled = shownChapter === chapters.length - 1;
   requireElement('#chapter-tiles').replaceChildren(...chapter.levels.map((level) => levelTile(level, next)));
@@ -701,7 +731,7 @@ function renderSelect(): void {
   resume.hidden = !next;
   if (next) {
     const index = allLevels.indexOf(next) + 1;
-    setLabelButton(resume, 'play', hasProgress ? `第 ${index} 关` : '开始');
+    setLabelButton(resume, 'play', hasProgress ? t().resumeLevel(index) : t().start);
     resume.classList.toggle('primary', !hasProgress);
     resume.onclick = () => { location.hash = `#${next.id}`; };
   }
@@ -720,7 +750,7 @@ function showSelect(): void {
   syncDay();
   gameScreen.hidden = true;
   selectScreen.hidden = false;
-  document.title = '激光反射';
+  document.title = t().title;
   renderSelect();
   selectNote = '';
   window.scrollTo(0, 0);
@@ -741,7 +771,7 @@ const muteButtons = document.querySelectorAll<HTMLButtonElement>('.mute');
 
 function refreshMuteButtons(): void {
   muteButtons.forEach((button) => {
-    setIconButton(button, sound.isMuted() ? 'soundOff' : 'soundOn', sound.isMuted() ? '打开音效' : '关闭音效');
+    setIconButton(button, sound.isMuted() ? 'soundOff' : 'soundOn', sound.isMuted() ? t().muteOn : t().muteOff);
   });
 }
 
@@ -754,6 +784,25 @@ muteButtons.forEach((button) => {
 
 backButton.addEventListener('click', () => goToSelect());
 window.addEventListener('hashchange', route);
+languageSelect.replaceChildren(...LOCALES.map(({ id, label }) => {
+  const option = document.createElement('option');
+  option.value = id;
+  option.textContent = label;
+  return option;
+}));
+languageSelect.value = getLocale();
+requireElement('#language').prepend(icon('globe'));
+languageSelect.addEventListener('change', () => {
+  const locale = languageSelect.value as Locale;
+  setLocale(locale);
+  saveLocale(storage, locale);
+  applyStaticText();
+  refreshMuteButtons();
+  refreshCoins();
+  route();
+});
+
+applyStaticText();
 refreshMuteButtons();
 refreshCoins();
 route();

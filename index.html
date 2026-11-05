@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#221d55" />
     <meta name="description" content="转动镜子，把激光引到每一颗水晶上。" />
-    <title>激光反射</title>
+    <title>Laser Mirror | 激光反射</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main id="select-screen" hidden>
       <header class="hero">
         <div class="hero-top">
-          <h1 class="game-title">激光反射</h1>
+          <h1 id="game-title" class="game-title"></h1>
           <div class="hero-buttons">
             <button class="coin-pill" type="button"></button>
             <button class="mute icon-button" type="button"></button>
@@ -22,13 +22,14 @@
         <div class="hero-actions">
           <button id="resume" class="primary" type="button"></button>
           <span class="total"><span class="star earned" aria-hidden="true"></span><span id="total-stars"></span></span>
+          <label id="language"><select id="language-select"></select></label>
         </div>
         <p id="select-note" role="status"></p>
       </header>
       <section id="daily-card" aria-labelledby="daily-title">
         <div class="daily-text">
           <div class="daily-top">
-            <h2 id="daily-title">今日一题</h2>
+            <h2 id="daily-title"></h2>
             <span id="daily-meta"></span>
           </div>
           <p id="daily-summary"></p>
@@ -62,7 +63,6 @@
       <canvas
         id="board"
         tabindex="0"
-        aria-label="激光反射棋盘。方向键选择格子，回车或空格操作。"
       ></canvas>
       <div id="score">
         <span id="step-count"></span>
@@ -105,7 +105,7 @@
           <div id="draw-box">
             <div id="draw-stage" aria-hidden="true"></div>
             <div class="draw-text">
-              <h3>幸运抽奖</h3>
+              <h3 id="draw-title"></h3>
               <p id="draw-odds"></p>
             </div>
             <button id="draw" type="button"></button>

@@ -1,4 +1,5 @@
 import { beamLengths, colorsReaching, retractReveal } from './beam';
+import { t } from './i18n';
 import {
   countPlaced,
   countTargets,
@@ -39,6 +40,8 @@ export type GameUi = {
 };
 
 export type GameHandlers = {
+  /** 开局显示的说明；没有时用通用的一句。 */
+  intro?: string;
   onWin(stars: number, steps: number): void;
   /** 每次重新开始后第一次动手时调用。 */
   onFirstMove?(): void;
@@ -86,7 +89,8 @@ export function startGame(
   const { signal } = listeners;
   const startGrid = parseGrid(level.grid);
   const inventory = level.inventory ?? 0;
-  const defaultMessage = level.hint ?? '转动镜子，点亮全部水晶。';
+  const text = t();
+  const defaultMessage = handlers.intro ?? text.defaultHint;
   const renderer = createRenderer(canvas, startGrid);
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const isSlow = createFrameMonitor();
@@ -323,27 +327,27 @@ export function startGame(
     Array.from(ui.pips.children).forEach((pip, index) => {
       pip.classList.toggle('lit', litFlags[index] === true);
     });
-    ui.pips.setAttribute('aria-label', `已点亮 ${lit} / ${targets.length} 颗水晶`);
+    ui.pips.setAttribute('aria-label', text.litLabel(lit, targets.length));
 
     const stars = starsFor(steps, level.par, assisted);
     const toolMessage = hint
-      ? '点一下金色光圈里的格子。'
+      ? text.hintTap
       : previewArmed
-        ? '点一面镜子或一块空地，看点它之后的光路。这一下不算步数。'
+        ? text.previewArmed
         : ghost
-          ? '白色虚线是点它之后的光路。'
+          ? text.previewShown
           : defaultMessage;
-    ui.status.textContent = celebrated ? `过关！得 ${stars} 星` : toolMessage;
+    ui.status.textContent = celebrated ? text.won(stars) : toolMessage;
     ui.status.classList.toggle('won', celebrated);
 
     // 过关前显示按现在的步数还能拿几星，让玩家看到每多点一次的代价
     Array.from(ui.stars.children).forEach((star, index) => {
       star.classList.toggle('earned', index < stars);
     });
-    ui.stars.setAttribute('aria-label', celebrated ? `得 ${stars} 星` : `现在还能得 ${stars} 星`);
-    ui.stepCount.textContent = `步数 ${steps}`;
-    ui.parNote.textContent = assisted ? '用过辅助，最多 2 星' : `${level.par} 步内得 3 星`;
-    ui.inventoryNote.textContent = inventory > 0 ? `还能放 ${left} 面镜子` : '';
+    ui.stars.setAttribute('aria-label', celebrated ? text.starsWonLabel(stars) : text.starsNowLabel(stars));
+    ui.stepCount.textContent = text.steps(steps);
+    ui.parNote.textContent = assisted ? text.assistedNote : text.parNote(level.par);
+    ui.inventoryNote.textContent = inventory > 0 ? text.placeLeft(left) : '';
     ui.score.classList.toggle('won', celebrated);
   }
 

@@ -143,7 +143,7 @@ describe.each(allLevels)('关卡 $id 的提示', ({ grid, par, inventory = 0 }) 
   });
 });
 
-describe.each(allLevels)('关卡 $id $name', ({ grid, par, inventory }) => {
+describe.each(allLevels)('关卡 $id', ({ grid, par, inventory }) => {
   const parsed = parseGrid(grid);
 
   it('par 就是真正的最少步数，而且开局不是已过关', () => {
