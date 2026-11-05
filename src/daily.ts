@@ -83,11 +83,14 @@ export type ShareInput = {
   par: number;
   attempts: number;
   streak: number;
+  stars: number;
   url: string;
+  /** 朋友的步数：从挑战链接来的才有。 */
+  friendSteps?: number | null;
 };
 
 /** 可以直接粘贴的成绩：只有步数，不会把答案告诉别人。绿格是最少步数以内，黄格是多走的。 */
-export function shareText({ issue, steps, par, attempts, streak, url }: ShareInput): string {
+export function shareText({ issue, steps, par, attempts, streak, stars, url, friendSteps }: ShareInput): string {
   const good = '🟩'.repeat(Math.min(steps, par));
   const extra = '🟨'.repeat(Math.min(Math.max(0, steps - par), 12));
   const more = steps - par > 12 ? '…' : '';
@@ -95,9 +98,10 @@ export function shareText({ issue, steps, par, attempts, streak, url }: ShareInp
   const tries = attempts > 1 ? text.shareTries(attempts) : '';
   return [
     text.shareTitle(issue),
-    `${text.shareSteps(steps, par)}${tries}`,
+    `${'⭐'.repeat(stars)} ${text.shareSteps(steps, par)}${tries}`,
     `${good}${extra}${more}`,
+    friendSteps ? text.shareVersus(steps, friendSteps) : '',
     text.shareStreak(streak),
     url,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }

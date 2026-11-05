@@ -6,7 +6,7 @@ import { countTargets, type Grid, interact, isSolved, parseGrid, type Position, 
 import { allLevels } from '../src/levels';
 import { solve } from '../src/scoring';
 
-type Theme = 'mirrors' | 'splitter' | 'placing' | 'colors' | 'portal' | 'switch' | 'mixed';
+type Theme = 'mirrors' | 'splitter' | 'placing' | 'colors' | 'portal' | 'switch' | 'mixed' | 'oneway';
 
 const WIDTH = 8;
 const HEIGHT = 7;
@@ -55,6 +55,11 @@ function makeRows(theme: Theme, random: (n: number) => number): { rows: string[]
     repeat(4 + random(3), '/\\');
     repeat(random(2), 'RB');
     repeat(random(2), 'sS');
+  } else if (theme === 'oneway') {
+    put(pick('>^v<'));
+    repeat(1 + random(3), 'T');
+    repeat(2 + random(4), '/\\');
+    repeat(1 + random(3), 'uU');
   } else if (theme === 'portal' || theme === 'switch' || theme === 'mixed') {
     put(pick('>^v<'));
     repeat(1 + random(2), 'T');
@@ -113,10 +118,71 @@ export function needsElements(rows: readonly string[], inventory: number, par: n
     return solve(parseGrid(walled), inventory)?.length ?? null;
   };
   const text = rows.join('');
+  if (/[uU]/.test(text)) {
+    const plain = rows.map((row) => row.replace(/u/g, '/').replace(/U/g, '\\'));
+    if ((solve(parseGrid(plain), inventory)?.length ?? Infinity) <= par) return false;
+  }
   const stillEasy = (found: number | null) => found !== null && found <= par;
   if (text.includes('O') && stillEasy(without(/O/g))) return false;
   if (text.includes('x') && stillEasy(without(/x/g))) return false;
   return true;
+}
+
+/**
+ * 过关时的光路有没有“原来还能这样”的结构。程序只能认结构，好不好玩还要人看。
+ */
+export function tricksOf(rows: readonly string[], solved: Grid): string[] {
+  const { segments } = traceLasers(solved);
+  const found: string[] = [];
+  const key = (x: number, y: number) => `${Math.floor(x)},${Math.floor(y)}`;
+
+  const turns = new Map<string, number>();
+  const axes = new Map<string, Set<string>>();
+  for (const { from, to } of segments) {
+    if (Number.isInteger(to.x - 0.5) && Number.isInteger(to.y - 0.5)) {
+      turns.set(key(to.x, to.y), (turns.get(key(to.x, to.y)) ?? 0) + 1);
+    }
+    const axis = from.x === to.x ? 'v' : 'h';
+    const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+    for (let i = 0; i <= steps; i += 0.5) {
+      const share = steps === 0 ? 0 : i / steps;
+      const cell = key(from.x + (to.x - from.x) * share, from.y + (to.y - from.y) * share);
+      const seen = axes.get(cell) ?? new Set<string>();
+      seen.add(axis);
+      axes.set(cell, seen);
+    }
+  }
+
+  solved.forEach((row, y) => row.forEach((cell, x) => {
+    const here = key(x + 0.5, y + 0.5);
+    const crossed = axes.get(here)?.size === 2;
+    if (cell.kind === 'mirror' && (turns.get(here) ?? 0) >= 2) found.push(cell.placed ? 'placed-two-faces' : 'two-faces');
+    if ((cell.kind === 'empty' || cell.kind === 'target') && crossed) found.push('self-cross');
+    if (cell.kind === 'oneway' && crossed && (turns.get(here) ?? 0) >= 1) {
+      const passes = segments.some(({ from, to }) => {
+        const inside = (a: number, b: number, c: number) => Math.min(a, b) < c && c < Math.max(a, b);
+        return (from.y === y + 0.5 && inside(from.x, to.x, x + 0.5)) || (from.x === x + 0.5 && inside(from.y, to.y, y + 0.5));
+      });
+      if (passes) found.push('oneway-both');
+    }
+    if (cell.kind === 'portal') {
+      const entered = segments.filter(({ to }) => to.x === x + 0.5 && to.y === y + 0.5).length;
+      const left = segments.filter(({ from }) => from.x === x + 0.5 && from.y === y + 0.5).length;
+      if (entered >= 1 && left >= 1) found.push('portal-both-ways');
+    }
+  }));
+
+  const text = rows.join('');
+  if (/[sS]/.test(text)) {
+    const noSplit = rows.map((row) => row.replace(/s/g, '/').replace(/S/g, '\\'));
+    if (solve(parseGrid(noSplit), 0) === null) found.push('needs-split');
+  }
+  if (/[RB]/.test(text) && text.includes('p')) {
+    const noFilter = rows.map((row) => row.replace(/[RB]/g, '#'));
+    if (solve(parseGrid(noFilter), 0) === null) found.push('filter-violet');
+  }
+  if (text.includes('O') && text.includes('x')) found.push('portal-and-door');
+  return [...new Set(found)];
 }
 
 function clickable(grid: Grid, inventory: number): Position[] {
@@ -143,12 +209,14 @@ export function luckyRate(start: Grid, inventory: number, par: number, random: (
   return wins / TRIALS;
 }
 
-const themes: readonly Theme[] = ['mirrors', 'splitter', 'placing', 'colors', 'portal', 'switch', 'mixed'];
+const themes: readonly Theme[] = ['mirrors', 'splitter', 'placing', 'colors', 'portal', 'mixed', 'oneway'];
+const KEEP_PER_TRICK = 25;
 const output: unknown[] = [];
 
 themes.forEach((theme, themeIndex) => {
   const random = createRandom(20261105 + themeIndex);
   const buckets = new Map<number, unknown[]>();
+  const trickCount = new Map<string, number>();
 
   const deadline = Date.now() + SECONDS_PER_THEME * 1000;
 
@@ -162,19 +230,21 @@ themes.forEach((theme, themeIndex) => {
     if (!clicks || clicks.length < 3 || clicks.length > 7) continue;
     const par = clicks.length;
     const bucket = buckets.get(par) ?? [];
-    if (bucket.length >= KEEP_PER_BUCKET) continue;
 
     // 留一面以上没用的镜子当干扰；过关时光要真的走一段路
     if (countMirrors(grid) < par + 1 && inventory === 0) continue;
     let end = grid;
     for (const click of clicks) end = interact(end, click, inventory) ?? end;
     if (traceLasers(end).segments.length < par + 1) continue;
+    const tricks = tricksOf(rows, end).filter((trick) => (trickCount.get(trick) ?? 0) < KEEP_PER_TRICK);
+    if (bucket.length >= KEEP_PER_BUCKET && tricks.length === 0) continue;
     if (countOptimalEndings(grid, inventory, par) > 2) continue;
     if (!needsElements(rows, inventory, par)) continue;
     const lucky = luckyRate(grid, inventory, par, random);
     if (lucky > MAX_LUCKY_RATE) continue;
 
-    bucket.push({ theme, par, inventory, lucky, grid: rows });
+    for (const trick of tricks) trickCount.set(trick, (trickCount.get(trick) ?? 0) + 1);
+    bucket.push({ theme, par, inventory, lucky, tricks, grid: rows });
     buckets.set(par, bucket);
   }
   output.push(...[...buckets.values()].flat());

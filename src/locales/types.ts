@@ -137,6 +137,15 @@ export type Messages = {
   shareSteps: (steps: number, par: number) => string;
   shareTries: (attempts: number) => string;
   shareStreak: (streak: number) => string;
+  shareVersus: (mine: number, friend: number) => string;
+  cardChallenge: string;
+  cardSteps: (steps: number, par: number) => string;
+  saveImage: string;
+  imageSaved: string;
+  imageFailed: string;
+  inviteTitle: string;
+  inviteBody: string;
+  inviteAction: string;
 
   chapterNames: readonly string[];
   levels: Record<string, { name: string; hint?: string }>;

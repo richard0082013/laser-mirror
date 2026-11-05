@@ -259,3 +259,39 @@ describe('开关和门', () => {
     expect(interact(parseGrid(['xD']), { x: 1, y: 0 }, 0)).toBeNull();
   });
 });
+
+describe('单面镜', () => {
+  it('亮面朝左：从左边来的光被反射', () => {
+    const up = parseGrid(['.T.', '>u.']);
+    expect(lastTo(['.T.', '>u.'])).toEqual({ x: 1.5, y: 0 });
+    expect(isSolved(up, traceLasers(up))).toBe(true);
+    const down = parseGrid(['>U.', '.T.']);
+    expect(isSolved(down, traceLasers(down))).toBe(true);
+  });
+
+  it('从右边来的光直接穿过', () => {
+    for (const mirror of ['u', 'U']) {
+      const rows = [`T${mirror}<`];
+      expect(isSolved(parseGrid(rows), traceLasers(parseGrid(rows)))).toBe(true);
+    }
+  });
+
+  it('上下来的光：打在亮面上才反射', () => {
+    // / 的亮面在左上，向下走的光被反射到左边；向上走的光穿过
+    const reflected = ['.v', 'Tu'];
+    expect(isSolved(parseGrid(reflected), traceLasers(parseGrid(reflected)))).toBe(true);
+    const passed = ['T', 'u', '^'];
+    expect(isSolved(parseGrid(passed), traceLasers(parseGrid(passed)))).toBe(true);
+    // \\ 的亮面在左下，向上走的光被反射到左边；向下走的光穿过
+    const reflectedUp = ['TU', '.^'];
+    expect(isSolved(parseGrid(reflectedUp), traceLasers(parseGrid(reflectedUp)))).toBe(true);
+    const passedDown = ['v', 'U', 'T'];
+    expect(isSolved(parseGrid(passedDown), traceLasers(parseGrid(passedDown)))).toBe(true);
+  });
+
+  it('点一下换朝向，原地图不变', () => {
+    const grid = parseGrid(['u']);
+    expect(interact(grid, { x: 0, y: 0 }, 0)?.[0]?.[0]).toEqual({ kind: 'oneway', mirror: '\\' });
+    expect(grid[0]?.[0]).toEqual({ kind: 'oneway', mirror: '/' });
+  });
+});

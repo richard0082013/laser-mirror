@@ -99,8 +99,8 @@ describe('切换语言', () => {
 
   it('分享成绩也用当前语言，方块一样', () => {
     setLocale('en');
-    expect(shareText({ issue: 3, par: 4, attempts: 2, streak: 1, url: 'https://example.com/', steps: 5 })).toBe(
-      ['Laser Mirror daily puzzle No. 3', '5 steps (best 4), attempt 2', '🟩🟩🟩🟩🟨', '1 day in a row', 'https://example.com/'].join('\n'),
+    expect(shareText({ issue: 3, par: 4, attempts: 2, streak: 1, stars: 2, url: 'https://example.com/', steps: 5 })).toBe(
+      ['Laser Mirror daily puzzle No. 3', '⭐⭐ 5 steps (best 4), attempt 2', '🟩🟩🟩🟩🟨', '1 day in a row', 'https://example.com/'].join('\n'),
     );
   });
 });

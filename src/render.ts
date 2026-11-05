@@ -52,6 +52,8 @@ export type Frame = {
   focus: Position | null;
   /** 提示要玩家点的格子。 */
   hint: Position | null;
+  /** 过关时沿光路跑的亮点走到了哪里；没在跑时是 null。 */
+  sweep: number | null;
   /** 第一次玩时标出来的格子。 */
   teach: Position | null;
   /** 预判看到的光路：点了那个格子之后光会怎么走。 */
@@ -196,12 +198,13 @@ function drawFilters(ctx: CanvasRenderingContext2D, grid: Grid): void {
   }));
 }
 
-type MirrorStyle = 'fixed' | 'placed' | 'splitter';
+type MirrorStyle = 'fixed' | 'placed' | 'splitter' | 'oneway';
 
 const RING_COLORS: Record<MirrorStyle, readonly [string, string, string]> = {
   fixed: ['#ffd98a', '#c08a3a', '#7a5220'],
   placed: ['#d9fbff', '#6fc6d8', '#2c6f86'],
   splitter: ['#f0d6ff', '#a97ad6', '#5a3a8a'],
+  oneway: ['#c8ffe0', '#54c98c', '#1f6e4a'],
 };
 
 function drawMirror(
@@ -248,6 +251,14 @@ function drawMirror(
   }
   ctx.fillStyle = glass;
   ctx.fillRect(-0.37, -0.07, 0.74, 0.14);
+  if (style === 'oneway') {
+    // 亮面永远朝左；转动时角度一直累加，所以按当前朝向算亮面在哪一侧
+    const facesLeft = Math.sin(angle) < 0;
+    ctx.fillStyle = 'rgba(8, 30, 24, 0.9)';
+    ctx.fillRect(-0.37, -0.07, 0.74, 0.14);
+    ctx.fillStyle = '#7dffb8';
+    ctx.fillRect(-0.37, facesLeft ? -0.11 : 0.05, 0.74, 0.06);
+  }
   ctx.fillStyle = ringMid;
   ctx.fillRect(-0.41, -0.09, 0.07, 0.18);
   ctx.fillRect(0.34, -0.09, 0.07, 0.18);
@@ -586,6 +597,18 @@ function drawHint(ctx: CanvasRenderingContext2D, { hint, time, still }: Frame): 
   ctx.stroke();
 }
 
+function drawSweep(ctx: CanvasRenderingContext2D, { sweep, beam }: Frame): void {
+  if (sweep === null) return;
+  for (const { from, to, start, length, color } of beam) {
+    if (sweep < start || sweep > start + length || length === 0) continue;
+    const share = (sweep - start) / length;
+    const x = from.x + (to.x - from.x) * share;
+    const y = from.y + (to.y - from.y) * share;
+    glow(ctx, x, y, 0.9, BEAM_COLORS[color].glow, 0.9);
+    glow(ctx, x, y, 0.32, WHITE, 1);
+  }
+}
+
 /** 向外扩散的圆环，像手指点水，告诉玩家看这里。 */
 function drawTeach(ctx: CanvasRenderingContext2D, { teach, time, still }: Frame): void {
   if (!teach) return;
@@ -724,6 +747,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
         if (cell.kind === 'target') drawCrystal(main, x, y, cell.color, frame.charges.get(cellKey(x, y)) ?? 0);
         if (cell.kind === 'mirror') drawMirror(main, x, y, angle, cell.placed ? 'placed' : 'fixed');
         if (cell.kind === 'splitter') drawMirror(main, x, y, angle, 'splitter');
+        if (cell.kind === 'oneway') drawMirror(main, x, y, angle, 'oneway');
         if (cell.kind === 'portal') drawPortal(main, x, y, cell.pair, frame.time, frame.still);
         if (cell.kind === 'switch') drawSwitch(main, x, y, frame.grid.flat().some((other) => other.kind === 'door' && other.open));
         if (cell.kind === 'door') drawDoor(main, x, y, cell.open);
@@ -748,6 +772,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
       drawBeam(emissionCtx, frame);
       drawHint(emissionCtx, frame);
       drawTeach(emissionCtx, frame);
+      drawSweep(emissionCtx, frame);
       drawGhost(emissionCtx, frame);
       drawEffects(emissionCtx, frame);
 

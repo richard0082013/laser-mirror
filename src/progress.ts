@@ -68,7 +68,8 @@ export function isUnlocked(chapters: readonly Chapter[], progress: Progress, id:
     for (const level of chapter.levels) {
       if (level.id === id) {
         if (starsNeeded(chapter, progress) > 0) return false;
-        return !previous || progress.levels[previous.id] !== undefined;
+        // 玩过的关一直开放：关卡调整过顺序后，老玩家不会被锁在外面
+        return !previous || progress.levels[previous.id] !== undefined || progress.levels[id] !== undefined;
       }
       previous = level;
     }

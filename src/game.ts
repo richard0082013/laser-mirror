@@ -25,6 +25,8 @@ const EMITTER_CHARGE_DELAY = 0.45; // 秒
 const MIRROR_TURN_RATE = 16;
 const MAX_PARTICLES = 400;
 const STAR_COUNT = 3;
+/** 过关时亮点沿光路跑一遍的速度，格子/秒。 */
+const SWEEP_SPEED = 22;
 /** 现有地图里最高的宽高比（9×8 去掉外圈），外框按它留够高度。 */
 const TALLEST_BOARD = 7.76 / 6.76;
 
@@ -69,7 +71,7 @@ const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
 
 const isRotatable = (grid: Grid, { x, y }: Position): boolean => {
   const kind = grid[y]?.[x]?.kind;
-  return kind === 'mirror' || kind === 'splitter';
+  return kind === 'mirror' || kind === 'splitter' || kind === 'oneway';
 };
 
 function cellsWhere(grid: Grid, test: (position: Position) => boolean): Position[] {
@@ -80,7 +82,7 @@ function cellsWhere(grid: Grid, test: (position: Position) => boolean): Position
 
 function restingAngle(grid: Grid, { x, y }: Position): number {
   const cell = grid[y]?.[x];
-  const mirror = cell?.kind === 'mirror' || cell?.kind === 'splitter' ? cell.mirror : '/';
+  const mirror = cell?.kind === 'mirror' || cell?.kind === 'splitter' || cell?.kind === 'oneway' ? cell.mirror : '/';
   return mirror === '\\' ? Math.PI / 4 : -Math.PI / 4;
 }
 
@@ -91,6 +93,7 @@ function teachCell(level: Level, grid: Grid, inventory: number): Position | null
     const cell = grid[y]?.[x];
     if (level.teach === 'filter') return cell?.kind === 'filter';
     if (level.teach === 'portal') return cell?.kind === 'portal';
+    if (level.teach === 'oneway') return cell?.kind === 'oneway';
     if (level.teach === 'switch') return cell?.kind === 'switch';
     if (level.teach === 'both') return cell?.kind === 'target' && cell.color === 'both';
     if (level.teach === 'target') return cell?.kind === 'target' && cell.color !== 'any';
@@ -150,6 +153,7 @@ export function startGame(
   let ghost: Segment[] | null = null;
   let history: { grid: Grid; position: Position }[] = [];
   let flash = 0;
+  let sweep: number | null = null;
   let time = 0;
   let focus: Position | null = null;
   let moteDebt = 0;
@@ -278,6 +282,7 @@ export function startGame(
     revealed = beamLengths(beam).map(() => 0);
     delay = EMITTER_CHARGE_DELAY;
     celebrated = false;
+    sweep = null;
     steps = 0;
     hint = null;
     assisted = false;
@@ -379,6 +384,10 @@ export function startGame(
   function update(dt: number): void {
     time += dt;
     flash = Math.max(0, flash - dt * 1.5);
+    if (sweep !== null) {
+      sweep += dt * SWEEP_SPEED;
+      if (sweep > Math.max(0, ...beamLengths(beam))) sweep = null;
+    }
 
     const lengths = beamLengths(beam);
     if (reducedMotion.matches) {
@@ -413,6 +422,7 @@ export function startGame(
     if (solved && fullyRevealed && !celebrated) {
       celebrated = true;
       flash = 1;
+      if (!reducedMotion.matches) sweep = 0;
       canvas.classList.add('won');
       const stars = starsFor(steps, level.par, assisted);
       sound.win(stars);
@@ -513,6 +523,7 @@ export function startGame(
       focus,
       hint,
       teach,
+      sweep,
       ghost,
       skin,
       canPlace: canPlace(),

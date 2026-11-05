@@ -47,12 +47,19 @@ describe('dailyPuzzle', () => {
 });
 
 describe('shareText', () => {
-  const base = { issue: 3, par: 4, attempts: 1, streak: 2, url: 'https://example.com/' };
+  const base = { issue: 3, par: 4, attempts: 1, streak: 2, stars: 2, url: 'https://example.com/' };
 
   it('绿格是最少步数以内，黄格是多走的', () => {
     expect(shareText({ ...base, steps: 6 })).toBe(
-      ['激光反射 每日一题 第 3 期', '6 步（最少 4 步）', '🟩🟩🟩🟩🟨🟨', '连续 2 天', 'https://example.com/'].join('\n'),
+      ['激光反射 每日一题 第 3 期', '⭐⭐ 6 步（最少 4 步）', '🟩🟩🟩🟩🟨🟨', '连续 2 天', 'https://example.com/'].join('\n'),
     );
+  });
+
+  it('从挑战链接来的写上和朋友的胜负', () => {
+    expect(shareText({ ...base, steps: 4, friendSteps: 9 })).toContain('我赢了朋友的 9 步');
+    expect(shareText({ ...base, steps: 9, friendSteps: 9 })).toContain('和朋友打平 9 步');
+    expect(shareText({ ...base, steps: 9, friendSteps: 4 })).toContain('朋友 4 步，这次输了');
+    expect(shareText({ ...base, steps: 4 })).not.toContain('朋友');
   });
 
   it('重来过要写出来', () => {

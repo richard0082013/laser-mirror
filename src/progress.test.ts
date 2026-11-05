@@ -126,3 +126,11 @@ describe('解锁', () => {
     expect(nextToPlay(chapters, played({ a: 2, b: 2, c: 3 }))).toBeUndefined();
   });
 });
+
+describe('关卡调整顺序之后', () => {
+  it('玩过的关还开放，新插到前面的关也能玩', () => {
+    const progress = { levels: { b: { stars: 3 } } };
+    expect(isUnlocked(chapters, progress, 'b')).toBe(true);
+    expect(isUnlocked(chapters, progress, 'a')).toBe(true);
+  });
+});

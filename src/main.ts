@@ -56,6 +56,7 @@ import {
   starsNeeded,
   totalStars,
 } from './progress';
+import { type CardInput, drawCard, saveCard } from './shareCard';
 import { createSound } from './sound';
 
 function requireElement<T extends Element>(selector: string): T {
@@ -127,6 +128,9 @@ const sheetDaily = requireElement<HTMLElement>('#sheet-daily');
 const sheetShare = requireElement<HTMLElement>('#sheet-share');
 const sheetCopy = requireElement<HTMLButtonElement>('#sheet-copy');
 const sheetCopied = requireElement<HTMLElement>('#sheet-copied');
+const sheetImage = requireElement<HTMLButtonElement>('#sheet-image');
+const dailyInvite = requireElement<HTMLElement>('#daily-invite');
+const inviteGo = requireElement<HTMLButtonElement>('#invite-go');
 const sheetShop = requireElement<HTMLElement>('#sheet-shop');
 const sheetNext = requireElement<HTMLButtonElement>('#sheet-next');
 const itemTable = requireElement<HTMLElement>('#item-table');
@@ -170,6 +174,10 @@ function applyStaticText(): void {
   setIconButton(skipButton, 'skip', text.skip);
   setIconButton(nextButton, 'next', text.next);
   setIconButton(sheetCopy, 'copy', text.copyShare);
+  setIconButton(sheetImage, 'image', text.saveImage);
+  requireElement('#invite-title').textContent = text.inviteTitle;
+  requireElement('#invite-body').textContent = text.inviteBody;
+  setLabelButton(inviteGo, 'play', text.inviteAction);
   setIconButton(dailyCopy, 'copy', text.copyShare);
   setIconButton(sheetClose, 'close', text.close);
   setIconButton(dailyHistory, 'history', text.historyOpen);
@@ -216,12 +224,12 @@ function syncDay(): void {
 /** 单文件版是本地文件，发出去的链接要指向公开网址。 */
 const gameUrl = (): string => (location.protocol === 'file:' ? PUBLIC_URL : `${location.origin}${location.pathname}`);
 
-function shareFor(date: string): string {
+function shareFor(date: string, friendSteps: number | null = null): string {
   const puzzle = dailyPuzzle(date);
   const result = meta.dailyResults[date];
   if (!result) return '';
   const url = `${gameUrl()}#${challengeRoute(puzzle.issue, result.steps)}`;
-  return shareText({ issue: puzzle.issue, ...result, streak: currentStreak(meta, localDateKey(new Date())), url });
+  return shareText({ issue: puzzle.issue, ...result, streak: currentStreak(meta, localDateKey(new Date())), url, friendSteps });
 }
 
 /** 旧办法：很多内嵌网页不给剪贴板权限，但还能用这个。 */
@@ -450,6 +458,7 @@ function showDaily(date: string, friendSteps: number | null): void {
   levelName.textContent = text.issue(issue);
   document.title = `${text.dailyTitle} | ${text.title}`;
   analytics.track(friendSteps ? 'challenge-start' : isToday ? 'daily-start' : 'past-daily-start');
+  sound.setTone(issue);
 
   game = startGame(level, ui, sound, {
     intro: dailyIntro(level, friendSteps),
@@ -467,7 +476,8 @@ function showDaily(date: string, friendSteps: number | null): void {
         mode: 'daily',
         title: isToday ? text.dailyDoneTitle(stars) : text.pastDoneTitle(stars),
         reward: [versus, earned > 0 ? text.reward(earned) : ''].filter(Boolean).join(' '),
-        share: shareFor(date),
+        share: shareFor(date, friendSteps),
+        card: { issue, steps, par: level.par, stars, streak: currentStreak(meta, localDateKey(new Date())), host: new URL(gameUrl()).host },
         nextLabel: text.backHome,
         onNext: () => goToSelect(),
       });
@@ -491,6 +501,7 @@ function showGame(level: Level): void {
 
   const text = t();
   const name = levelText(level)?.name ?? '';
+  sound.setTone(allLevels.indexOf(level));
   levelNumber.textContent = text.levelNumber(allLevels.indexOf(level) + 1);
   levelName.textContent = name;
   document.title = `${name} | ${text.title}`;
@@ -510,8 +521,13 @@ function showGame(level: Level): void {
       setMeta(addCoins(meta, reward));
       analytics.track(`level-win-${level.id}`);
       setWon(true);
+      // 第 1 章只专心解谜：过关面板不摆道具和抽奖，要用可以点金币进商店
+      const firstChapter = chapters[0]?.levels.includes(level) ?? false;
+      const clears = Object.values(progress.levels).filter(({ stars: earned }) => earned > 0).length;
+      const invite = clears >= INVITE_AFTER_CLEARS && !meta.dailyResults[localDateKey(new Date())];
       openSheetSoon({
-        mode: 'win',
+        mode: firstChapter ? 'win-plain' : 'win',
+        invite,
         title: text.winTitle(stars),
         reward: reward > 0 ? text.reward(reward) : '',
         nextLabel: text.nextLevel,
@@ -828,8 +844,10 @@ function openHistory(): void {
 }
 
 type SheetOptions = {
-  mode: 'shop' | 'win' | 'daily' | 'history' | 'confirm';
+  mode: 'shop' | 'win' | 'win-plain' | 'daily' | 'history' | 'confirm';
   title: string;
+  invite?: boolean;
+  card?: CardInput;
   reward?: string;
   text?: string;
   share?: string;
@@ -855,7 +873,9 @@ function closeSheet(): void {
   if (sheet.open) sheet.close();
 }
 
-function openSheet({ mode, title, reward = '', text = '', share = '', nextLabel, onNext }: SheetOptions): void {
+const INVITE_AFTER_CLEARS = 3;
+
+function openSheet({ mode, title, invite = false, card, reward = '', text = '', share = '', nextLabel, onNext }: SheetOptions): void {
   clearPendingSheet();
   syncDay();
   sheetTitle.textContent = title;
@@ -863,7 +883,21 @@ function openSheet({ mode, title, reward = '', text = '', share = '', nextLabel,
   sheetText.textContent = text;
   sheetText.hidden = text === '';
   sheetDaily.hidden = mode !== 'daily';
-  sheetShop.hidden = mode === 'daily' || mode === 'history' || mode === 'confirm';
+  sheetShop.hidden = mode === 'daily' || mode === 'history' || mode === 'confirm' || mode === 'win-plain';
+  dailyInvite.hidden = !invite;
+  inviteGo.onclick = () => {
+    analytics.track('daily-invite');
+    closeSheet();
+    location.hash = `#${DAILY_ROUTE}`;
+  };
+  sheetImage.hidden = !card;
+  sheetImage.onclick = () => {
+    if (!card) return;
+    void saveCard(drawCard(card), `laser-mirror-${card.issue}.png`).then((saved) => {
+      analytics.track(saved ? 'share-image' : 'share-image-failed');
+      sheetCopied.textContent = saved ? t().imageSaved : t().imageFailed;
+    });
+  };
   sheetHistory.hidden = mode !== 'history';
   skinRow.hidden = mode !== 'shop';
   settingsBox.hidden = mode !== 'shop';

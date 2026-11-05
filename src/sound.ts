@@ -10,6 +10,9 @@ const CHORDS = [
   [196, 246.94, 329.63],
 ] as const;
 const BAR_SECONDS = 8;
+/** 五声音阶：怎么连都不难听。 */
+const PENTATONIC = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.51, 1567.98, 1760];
+const toneAt = (step: number): number => PENTATONIC[step % PENTATONIC.length] ?? 523.25;
 
 export type Sound = {
   rotate(): void;
@@ -17,6 +20,8 @@ export type Sound = {
   remove(): void;
   crystal(): void;
   win(stars: number): void;
+  /** 每关一个音，连着玩就像在弹一段旋律。 */
+  setTone(step: number): void;
   isMuted(): boolean;
   setMuted(muted: boolean): void;
   isMusicOn(): boolean;
@@ -38,6 +43,8 @@ export function createSound(store: KeyValueStore | null): Sound {
     // 读不到设置就用默认值
   }
 
+  let tone = 0;
+  let crystalsLit = 0;
   let musicOn = false;
   try {
     musicOn = store?.getItem(MUSIC_KEY) === '1';
@@ -114,13 +121,20 @@ export function createSound(store: KeyValueStore | null): Sound {
     rotate: () => play([{ from: 620, to: 420, duration: 0.07 }]),
     place: () => play([{ from: 300, to: 640, duration: 0.09 }]),
     remove: () => play([{ from: 640, to: 280, duration: 0.09 }]),
-    crystal: () =>
+    crystal: () => {
+      const from = toneAt(tone + crystalsLit);
+      crystalsLit += 1;
       play([
-        { from: 1046, duration: 0.28, type: 'sine', volume: 0.1 },
-        { from: 1568, duration: 0.2, type: 'sine', volume: 0.05, delay: 0.03 },
-      ]),
+        { from, duration: 0.28, type: 'sine', volume: 0.1 },
+        { from: from * 1.5, duration: 0.2, type: 'sine', volume: 0.05, delay: 0.03 },
+      ]);
+    },
+    setTone(step) {
+      tone = Math.max(0, step);
+      crystalsLit = 0;
+    },
     win: (stars) => {
-      const notes = [523, 659, 784, 1046, 1318].slice(0, stars + 2);
+      const notes = Array.from({ length: stars + 2 }, (_, index) => toneAt(tone + index * 2));
       play(notes.map((from, index) => ({
         from,
         duration: 0.22,

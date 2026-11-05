@@ -11,6 +11,8 @@ export type Cell =
   | { kind: 'emitter'; direction: Direction; color: BeamColor }
   | { kind: 'mirror'; mirror: MirrorType; placed?: true }
   | { kind: 'splitter'; mirror: MirrorType }
+  /** 单面镜：亮面朝左。从左边来的光被反射，从右边来的光直接穿过。 */
+  | { kind: 'oneway'; mirror: MirrorType }
   | { kind: 'filter'; color: BeamColor }
   /** 同一个 pair 的两个传送门成对：光从一个进去，从另一个沿原方向出来。 */
   | { kind: 'portal'; pair: string }
@@ -72,6 +74,8 @@ const SIMPLE_CELLS: Record<string, Cell> = {
   S: { kind: 'splitter', mirror: '\\' },
   R: { kind: 'filter', color: 'red' },
   B: { kind: 'filter', color: 'blue' },
+  u: { kind: 'oneway', mirror: '/' },
+  U: { kind: 'oneway', mirror: '\\' },
   O: { kind: 'portal', pair: 'O' },
   Q: { kind: 'portal', pair: 'Q' },
   x: { kind: 'switch' },
@@ -84,7 +88,7 @@ const SIMPLE_CELLS: Record<string, Cell> = {
  * `.` 空地，`#` 墙，`/` `\` 镜子，`s` `S` 分光镜（朝向同 `/` `\`），
  * `T` 任意色目标，`r` `b` 红蓝目标，`p` 要红蓝都照到的目标，`R` `B` 红蓝滤片，
  * `^ > v <` 红色发射器，`A ] Y [` 蓝色发射器（上右下左），
- * `O` `Q` 两对传送门，`x` 开关，`D` 关着的门，`d` 开着的门。
+ * `u` `U` 单面镜（朝向同 `/` `\\`），`O` `Q` 两对传送门，`x` 开关，`D` 关着的门，`d` 开着的门。
  */
 export function parseGrid(rows: readonly string[]): Grid {
   const width = rows[0]?.length ?? 0;
@@ -111,6 +115,12 @@ export function targetAccepts(required: TargetColor, colors: ReadonlySet<BeamCol
   if (required === 'both') return colors.has('red') && colors.has('blue');
   return colors.has(required);
 }
+
+/** 亮面朝左时，朝这些方向走的光会打在亮面上。 */
+const ONE_WAY_REFLECTS: Record<MirrorType, readonly Direction[]> = {
+  '/': ['right', 'down'],
+  '\\': ['right', 'up'],
+};
 
 type Ray = { position: Position; direction: Direction; start: number };
 
@@ -202,6 +212,11 @@ function traceRay(
       endSegment(centerOf(position));
       out.pending.push({ position, direction, start: travelled });
       direction = REFLECTIONS[cell.mirror][direction];
+    } else if (cell.kind === 'oneway') {
+      if (ONE_WAY_REFLECTS[cell.mirror].includes(direction)) {
+        endSegment(centerOf(position));
+        direction = REFLECTIONS[cell.mirror][direction];
+      }
     } else if (cell.kind === 'portal') {
       const exit = portalExit(grid, position, cell.pair);
       if (exit) {
@@ -232,7 +247,7 @@ export function countPlaced(grid: Grid): number {
 
 /**
  * 玩家点了一个格子之后的新地图，这一下没有作用时返回 null。原地图不变。
- * 固定的镜子和分光镜在两种朝向之间切换；空地放下 `/`；放下的镜子按 `/` → `\` → 收回 循环；
+ * 固定的镜子、分光镜和单面镜在两种朝向之间切换；空地放下 `/`；放下的镜子按 `/` → `\` → 收回 循环；
  * 开关切换全部门。
  */
 export function interact(grid: Grid, { x, y }: Position, inventory: number): Grid | null {
@@ -249,6 +264,9 @@ export function interact(grid: Grid, { x, y }: Position, inventory: number): Gri
   }
   if (cell.kind === 'switch') {
     return grid.map((row) => row.map((current) => (current.kind === 'door' ? { kind: 'door', open: !current.open } : current)));
+  }
+  if (cell.kind === 'oneway') {
+    return replaced({ kind: 'oneway', mirror: cell.mirror === '/' ? '\\' : '/' });
   }
   if (cell.kind === 'splitter') {
     return replaced({ kind: 'splitter', mirror: cell.mirror === '/' ? '\\' : '/' });
