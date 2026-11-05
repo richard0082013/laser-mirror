@@ -132,7 +132,6 @@ const sheetCopied = requireElement<HTMLElement>('#sheet-copied');
 const sheetImage = requireElement<HTMLButtonElement>('#sheet-image');
 const dailyInvite = requireElement<HTMLElement>('#daily-invite');
 const inviteGo = requireElement<HTMLButtonElement>('#invite-go');
-const shopToggle = requireElement<HTMLButtonElement>('#shop-toggle');
 const sheetShop = requireElement<HTMLElement>('#sheet-shop');
 const sheetNext = requireElement<HTMLButtonElement>('#sheet-next');
 const itemTable = requireElement<HTMLElement>('#item-table');
@@ -180,7 +179,6 @@ function applyStaticText(): void {
   requireElement('#invite-title').textContent = text.inviteTitle;
   requireElement('#invite-body').textContent = text.inviteBody;
   setLabelButton(inviteGo, 'play', text.inviteAction);
-  setLabelButton(shopToggle, 'gift', text.itemsOpen);
   setIconButton(dailyCopy, 'copy', text.copyShare);
   setIconButton(sheetClose, 'close', text.close);
   setIconButton(dailyHistory, 'history', text.historyOpen);
@@ -538,12 +536,11 @@ function showGame(level: Level): void {
       setMeta(addCoins(meta, reward));
       analytics.track(`level-win-${level.id}`);
       setWon(true);
-      // 第 1 章只专心解谜：过关面板不摆道具和抽奖，要用可以点金币进商店
-      const firstChapter = chapters[0]?.levels.includes(level) ?? false;
+      // 过关面板只有星星、金币和下一关；商店和抽奖从金币按钮进
       const clears = Object.values(progress.levels).filter(({ stars: earned }) => earned > 0).length;
       const invite = clears >= INVITE_AFTER_CLEARS && !meta.dailyResults[localDateKey(new Date())];
       openSheetSoon({
-        mode: firstChapter ? 'win-plain' : 'win',
+        mode: 'win',
         invite,
         title: text.winTitle(stars),
         reward: reward > 0 ? text.reward(reward) : '',
@@ -861,7 +858,7 @@ function openHistory(): void {
 }
 
 type SheetOptions = {
-  mode: 'shop' | 'win' | 'win-plain' | 'daily' | 'history' | 'confirm';
+  mode: 'shop' | 'win' | 'daily' | 'history' | 'confirm';
   title: string;
   invite?: boolean;
   card?: CardInput;
@@ -900,13 +897,7 @@ function openSheet({ mode, title, invite = false, card, reward = '', text = '', 
   sheetText.textContent = text;
   sheetText.hidden = text === '';
   sheetDaily.hidden = mode !== 'daily';
-  // 过关面板默认只有星星、金币和下一关，想买道具再点开，不会误花金币
   sheetShop.hidden = mode !== 'shop';
-  shopToggle.hidden = mode !== 'win';
-  shopToggle.onclick = () => {
-    shopToggle.hidden = true;
-    sheetShop.hidden = false;
-  };
   dailyInvite.hidden = !invite;
   inviteGo.onclick = () => {
     analytics.track('daily-invite');

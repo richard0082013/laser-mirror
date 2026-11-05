@@ -574,21 +574,6 @@ h2 {
   font-size: 0.8125rem;
 }
 
-#shop-toggle {
-  align-self: flex-start;
-  min-height: 40px;
-  padding: 6px 12px;
-  border: 1px solid rgba(170, 176, 220, 0.45);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-#shop-toggle[hidden] {
-  display: none;
-}
-
 #install-row,
 #daily-invite {
   display: flex;

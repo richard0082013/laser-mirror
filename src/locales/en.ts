@@ -149,7 +149,6 @@ export const en: Messages = {
   inviteTitle: 'Try the daily puzzle',
   inviteBody: 'Same puzzle for everyone. Who takes the fewest steps?',
   inviteAction: 'Take a look',
-  itemsOpen: 'Items',
   endingTitle: 'All levels cleared!',
   endingBody: (earned, max) => `You earned ${earned} of ${max} stars. Thanks for playing this far. There is a new daily puzzle tomorrow.`,
   mechanics: {

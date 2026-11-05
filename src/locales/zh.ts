@@ -145,7 +145,6 @@ export const zh: Messages = {
   inviteTitle: '试试今日一题',
   inviteBody: '所有人同一道题，比比谁步数少。',
   inviteAction: '去看看',
-  itemsOpen: '道具',
   endingTitle: '全部通关！',
   endingBody: (stars, max) => `你拿到了 ${stars} / ${max} 颗星。谢谢你玩到这里，明天还有新的每日一题。`,
   mechanics: {

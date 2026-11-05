@@ -144,7 +144,6 @@ export type Messages = {
   inviteTitle: string;
   inviteBody: string;
   inviteAction: string;
-  itemsOpen: string;
   endingTitle: string;
   endingBody: (stars: number, max: number) => string;
   mechanics: {
