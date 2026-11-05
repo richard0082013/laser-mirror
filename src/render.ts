@@ -52,6 +52,8 @@ export type Frame = {
   focus: Position | null;
   /** 提示要玩家点的格子。 */
   hint: Position | null;
+  /** 第一次玩时标出来的格子。 */
+  teach: Position | null;
   /** 预判看到的光路：点了那个格子之后光会怎么走。 */
   ghost: readonly Segment[] | null;
   skin: SkinId;
@@ -584,6 +586,22 @@ function drawHint(ctx: CanvasRenderingContext2D, { hint, time, still }: Frame): 
   ctx.stroke();
 }
 
+/** 向外扩散的圆环，像手指点水，告诉玩家看这里。 */
+function drawTeach(ctx: CanvasRenderingContext2D, { teach, time, still }: Frame): void {
+  if (!teach) return;
+  const cx = teach.x + 0.5;
+  const cy = teach.y + 0.5;
+  glow(ctx, cx, cy, 0.7, FOCUS, 0.3);
+  for (let i = 0; i < 2; i += 1) {
+    const phase = still ? 0.4 + i * 0.3 : ((time * 0.8 + i * 0.5) % 1);
+    ctx.strokeStyle = rgba(FOCUS, 1 - phase);
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 0.4 + phase * 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 function drawGhost(ctx: CanvasRenderingContext2D, { ghost, time, still }: Frame): void {
   if (!ghost) return;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
@@ -729,6 +747,7 @@ export function createRenderer(canvas: HTMLCanvasElement, start: Grid): Renderer
       drawCrystalLight(emissionCtx, frame);
       drawBeam(emissionCtx, frame);
       drawHint(emissionCtx, frame);
+      drawTeach(emissionCtx, frame);
       drawGhost(emissionCtx, frame);
       drawEffects(emissionCtx, frame);
 

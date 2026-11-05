@@ -40,6 +40,33 @@ export type Messages = {
   dailyHint: (inventory: number) => string;
   dailyDoneTitle: (stars: number) => string;
   backHome: string;
+  dailyPortalNote: string;
+  dailySwitchNote: string;
+
+  historyOpen: string;
+  historyTitle: string;
+  historyEmpty: string;
+  historyNote: (coins: number) => string;
+  historyPlay: (issue: number) => string;
+  historyDoneEntry: (issue: number, steps: number, par: number) => string;
+  historyUnplayed: string;
+  pastDoneTitle: (stars: number) => string;
+
+  challengeIntro: (steps: number) => string;
+  challengeWin: (mine: number, friend: number) => string;
+  challengeTie: (steps: number) => string;
+  challengeLose: (mine: number, friend: number) => string;
+
+  settingsTitle: string;
+  settingsMusic: string;
+  settingsStats: string;
+  settingOn: string;
+  settingOff: string;
+  privacy: string;
+  installTitle: string;
+  installDetail: string;
+  installAction: string;
+  installIos: string;
 
   start: string;
   resumeLevel: (level: number) => string;

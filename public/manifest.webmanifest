@@ -1,0 +1,16 @@
+{
+  "name": "激光反射 Laser Mirror",
+  "short_name": "Laser Mirror",
+  "description": "Turn the mirrors and guide the laser to every crystal.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1034",
+  "theme_color": "#221d55",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

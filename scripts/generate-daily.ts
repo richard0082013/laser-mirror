@@ -106,6 +106,19 @@ function countMirrors(grid: Grid): number {
   return grid.flat().filter((cell) => cell.kind === 'mirror' || cell.kind === 'splitter').length;
 }
 
+/** 把传送门或开关换成墙后，最少步数不变就说明它只是摆设。 */
+export function needsElements(rows: readonly string[], inventory: number, par: number): boolean {
+  const without = (pattern: RegExp): number | null => {
+    const walled = rows.map((row) => row.replace(pattern, '#'));
+    return solve(parseGrid(walled), inventory)?.length ?? null;
+  };
+  const text = rows.join('');
+  const stillEasy = (found: number | null) => found !== null && found <= par;
+  if (text.includes('O') && stillEasy(without(/O/g))) return false;
+  if (text.includes('x') && stillEasy(without(/x/g))) return false;
+  return true;
+}
+
 function clickable(grid: Grid, inventory: number): Position[] {
   return grid.flatMap((row, y) => row.flatMap((_, x) => (interact(grid, { x, y }, inventory) ? [{ x, y }] : [])));
 }
@@ -157,6 +170,7 @@ themes.forEach((theme, themeIndex) => {
     for (const click of clicks) end = interact(end, click, inventory) ?? end;
     if (traceLasers(end).segments.length < par + 1) continue;
     if (countOptimalEndings(grid, inventory, par) > 2) continue;
+    if (!needsElements(rows, inventory, par)) continue;
     const lucky = luckyRate(grid, inventory, par, random);
     if (lucky > MAX_LUCKY_RATE) continue;
 

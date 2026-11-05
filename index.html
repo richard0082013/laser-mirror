@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#221d55" />
     <meta name="description" content="转动镜子，把激光引到每一颗水晶上。" />
     <title>Laser Mirror | 激光反射</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -36,6 +40,7 @@
         </div>
         <button id="daily-start" type="button"></button>
         <button id="daily-copy" class="icon-button" type="button" hidden></button>
+        <button id="daily-history" class="icon-button" type="button"></button>
         <pre id="daily-share" hidden></pre>
         <span id="daily-copied" role="status"></span>
       </section>
@@ -99,6 +104,10 @@
             <span id="sheet-copied" role="status"></span>
           </div>
         </div>
+        <div id="sheet-history" hidden>
+          <p class="shop-note" id="history-note"></p>
+          <div id="history-grid"></div>
+        </div>
         <div id="sheet-shop">
           <div id="item-table"></div>
           <p class="shop-note" id="item-rules"></p>
@@ -112,6 +121,14 @@
           </div>
           <p id="draw-result" role="status"></p>
           <div id="skin-row"></div>
+          <div id="settings"></div>
+        </div>
+        <div id="install-row" hidden>
+          <div class="draw-text">
+            <h3 id="install-title"></h3>
+            <p id="install-detail"></p>
+          </div>
+          <button id="install" type="button"></button>
         </div>
         <button id="sheet-next" class="primary" type="button"></button>
       </div>

@@ -216,6 +216,17 @@ export function noteDailyAttempt(meta: Meta, date: string): Meta {
   return { ...meta, attempt: { date, count: attemptsToday(meta, date) + 1 } };
 }
 
+export const PAST_DAILY_REWARD = 10;
+
+/** 补做往期题：记成绩、发少量金币，但不算连续打卡，否则补题就能刷连续天数。 */
+export function recordPastDaily(meta: Meta, date: string, result: DailyResult): Meta {
+  if (meta.dailyResults[date]) return meta;
+  return {
+    ...addCoins(meta, PAST_DAILY_REWARD),
+    dailyResults: { ...meta.dailyResults, [date]: result },
+  };
+}
+
 /** 每天只记第一次过关的成绩；已经记过时原样返回。 */
 export function recordDaily(meta: Meta, date: string, result: DailyResult): Meta {
   if (meta.dailyResults[date]) return meta;

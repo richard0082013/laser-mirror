@@ -29,6 +29,12 @@ html = html.replace(/<script type="module"[^>]*src="([^"]+)"[^>]*><\/script>/, (
 // 放到最后，页面元素都在了才运行
 html = html.replace('</body>', () => `<script type="module">${moduleScript}</script>\n</body>`);
 
+// 单文件版没有旁边的文件，安装到桌面和图标都用不了
+html = html
+  .replace(/<link rel="manifest"[^>]*>\s*/, '')
+  .replace(/<link rel="(apple-touch-icon|icon)"[^>]*>\s*/g, '')
+  .replace(/<meta name="apple-mobile-web-app-capable"[^>]*>\s*/, '');
+
 if (fragment) {
   html = html
     .replace(/<!doctype html>\s*/i, '')

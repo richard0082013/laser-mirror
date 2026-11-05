@@ -18,7 +18,9 @@ import {
   type Meta,
   newMeta,
   noteDailyAttempt,
+  PAST_DAILY_REWARD,
   pickPrize,
+  recordPastDaily,
   recordDaily,
   saveMeta,
   spendItem,
@@ -274,5 +276,23 @@ describe('冷却', () => {
 
   it('时钟往回调时最多等一个冷却时长', () => {
     expect(cooldownLeft(startCooldown(newMeta(), 'undo', now), 'undo', now - 999_999)).toBe(ITEM_COOLDOWNS_MS.undo);
+  });
+});
+
+describe('补做往期题', () => {
+  const result = { steps: 4, par: 4, stars: 3, attempts: 1 };
+
+  it('发少量金币，不影响连续天数', () => {
+    const today = recordDaily({ ...newMeta(), coins: 0 }, '2026-11-10', result);
+    const after = recordPastDaily(today, '2026-11-08', result);
+    expect(after.coins).toBe(today.coins + PAST_DAILY_REWARD);
+    expect(after.streak).toBe(1);
+    expect(after.lastDaily).toBe('2026-11-10');
+    expect(after.dailyResults['2026-11-08']).toEqual(result);
+  });
+
+  it('同一题不重复发币', () => {
+    const once = recordPastDaily(newMeta(), '2026-11-08', result);
+    expect(recordPastDaily(once, '2026-11-08', result)).toBe(once);
   });
 });

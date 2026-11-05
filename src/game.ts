@@ -42,6 +42,8 @@ export type GameUi = {
 export type GameHandlers = {
   /** 开局显示的说明；没有时用通用的一句。 */
   intro?: string;
+  /** 第一次玩这关：在棋盘上标出关卡要教的东西，点一下就消失。 */
+  teach?: boolean;
   onWin(stars: number, steps: number): void;
   /** 每次重新开始后第一次动手时调用。 */
   onFirstMove?(): void;
@@ -74,6 +76,21 @@ function restingAngle(grid: Grid, { x, y }: Position): number {
   const cell = grid[y]?.[x];
   const mirror = cell?.kind === 'mirror' || cell?.kind === 'splitter' ? cell.mirror : '/';
   return mirror === '\\' ? Math.PI / 4 : -Math.PI / 4;
+}
+
+/** 这关第一次玩时要标出来的格子。 */
+function teachCell(level: Level, grid: Grid, inventory: number): Position | null {
+  if (level.teach === 'tap') return solve(grid, inventory)?.[0] ?? null;
+  const wanted = (x: number, y: number): boolean => {
+    const cell = grid[y]?.[x];
+    if (level.teach === 'filter') return cell?.kind === 'filter';
+    if (level.teach === 'portal') return cell?.kind === 'portal';
+    if (level.teach === 'switch') return cell?.kind === 'switch';
+    if (level.teach === 'both') return cell?.kind === 'target' && cell.color === 'both';
+    if (level.teach === 'target') return cell?.kind === 'target' && cell.color !== 'any';
+    return false;
+  };
+  return cellsWhere(grid, ({ x, y }) => wanted(x, y))[0] ?? null;
 }
 
 /** 开始玩一关。换关时调用 stop，所有事件和动画都会停下。 */
@@ -121,6 +138,7 @@ export function startGame(
   let celebrated = false;
   let steps = 0;
   let hint: Position | null = null;
+  let teach: Position | null = handlers.teach ? teachCell(level, startGrid, inventory) : null;
   let assisted = false;
   let previewArmed = false;
   let ghost: Segment[] | null = null;
@@ -220,6 +238,7 @@ export function startGame(
       return;
     }
 
+    teach = null;
     if (steps === 0) handlers.onFirstMove?.();
     revealed = retractReveal(revealed, beam, center(position));
     history.push({ grid, position });
@@ -487,6 +506,7 @@ export function startGame(
       charges,
       focus,
       hint,
+      teach,
       ghost,
       skin,
       canPlace: canPlace(),

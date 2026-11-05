@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { dailyPuzzle, daysBetween, localDateKey, shareText } from './daily';
+import {
+  challengeRoute,
+  dailyPuzzle,
+  dateOfIssue,
+  daysBetween,
+  issueOf,
+  localDateKey,
+  parseDailyRoute,
+  playableIssue,
+  shareText,
+} from './daily';
 import { dailyMaps } from './dailyLevels';
 import { isSolved, parseGrid, traceLasers } from './laser';
 import { minimumSteps, solve } from './scoring';
@@ -74,5 +84,39 @@ describe('每日题库', () => {
     let current = start;
     for (const click of solve(start, inventory) ?? []) current = interact(current, click, inventory) ?? current;
     expect(isSolved(current, traceLasers(current))).toBe(true);
+  });
+});
+
+describe('期号和日期', () => {
+  it('互相换算，跨月跨年都对', () => {
+    expect(issueOf('2026-11-05')).toBe(1);
+    expect(issueOf('2026-12-01')).toBe(27);
+    expect(dateOfIssue(1)).toBe('2026-11-05');
+    expect(dateOfIssue(27)).toBe('2026-12-01');
+    expect(dateOfIssue(issueOf('2027-03-01'))).toBe('2027-03-01');
+  });
+});
+
+describe('每日题链接', () => {
+  it('认得今日题、往期题和挑战链接', () => {
+    expect(parseDailyRoute('daily')).toEqual({ issue: null, friendSteps: null });
+    expect(parseDailyRoute('daily/12')).toEqual({ issue: 12, friendSteps: null });
+    expect(parseDailyRoute('vs/12/5')).toEqual({ issue: 12, friendSteps: 5 });
+    expect(parseDailyRoute(challengeRoute(3, 7))).toEqual({ issue: 3, friendSteps: 7 });
+  });
+
+  it.each(['', 'first-light', 'daily/', 'daily/abc', 'daily/0', 'daily/1/2', 'vs/1', 'vs/1/0', 'vs/x/2', 'vs/1/-3', 'vs/1/1e5'])(
+    '不认 %j',
+    (route) => {
+      expect(parseDailyRoute(route)).toBeNull();
+    },
+  );
+
+  it('未来的题不能提前玩，挑战链接可以早一天', () => {
+    expect(playableIssue(2, '2026-11-06', false)).toBe(true);
+    expect(playableIssue(3, '2026-11-06', false)).toBe(false);
+    expect(playableIssue(3, '2026-11-06', true)).toBe(true);
+    expect(playableIssue(4, '2026-11-06', true)).toBe(false);
+    expect(playableIssue(0, '2026-11-06', true)).toBe(false);
   });
 });

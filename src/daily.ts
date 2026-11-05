@@ -23,6 +23,40 @@ export function daysBetween(from: string, to: string): number {
   return dayNumber(to) - dayNumber(from);
 }
 
+export const issueOf = (date: string): number => daysBetween(FIRST_DAY, date) + 1;
+
+export function dateOfIssue(issue: number): string {
+  const [year = 0, month = 1, day = 1] = FIRST_DAY.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + issue - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+export type DailyRoute = { issue: number | null; friendSteps: number | null };
+
+const positive = (text: string | undefined): number | null => {
+  if (!text || !/^\d{1,5}$/.test(text)) return null;
+  const value = Number(text);
+  return value > 0 ? value : null;
+};
+
+/** `daily` 今日题，`daily/12` 第 12 期，`vs/12/5` 朋友用 5 步做的第 12 期。其他内容返回 null。 */
+export function parseDailyRoute(route: string): DailyRoute | null {
+  if (route === DAILY_ROUTE) return { issue: null, friendSteps: null };
+  const [kind, first, second] = route.split('/');
+  const issue = positive(first);
+  if (kind === DAILY_ROUTE && issue !== null && second === undefined) return { issue, friendSteps: null };
+  const friendSteps = positive(second);
+  if (kind === 'vs' && issue !== null && friendSteps !== null) return { issue, friendSteps };
+  return null;
+}
+
+export const challengeRoute = (issue: number, steps: number): string => `vs/${issue}/${steps}`;
+
+/** 只能玩已经开放的题。朋友在别的时区可能已经到第二天，所以挑战链接可以早一天。 */
+export function playableIssue(issue: number, today: string, fromFriend: boolean): boolean {
+  return issue >= 1 && issue <= issueOf(today) + (fromFriend ? 1 : 0);
+}
+
 export type DailyPuzzle = { date: string; issue: number; level: Level };
 
 /** 同一天所有人拿到同一道题；题库用完就从头循环。手机时钟早于第 1 期时也能拿到题。 */

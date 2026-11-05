@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Grid, interact, isSolved, parseGrid, traceLasers } from './laser';
+import { dailyMaps } from './dailyLevels';
 import { allLevels } from './levels';
 import { minimumSteps, solve, starsFor } from './scoring';
 
@@ -95,6 +96,26 @@ describe('求解器和新元素', () => {
 
   it('怎么点都打不开时返回 null', () => {
     expect(minimumSteps(parseGrid(['>DT']))).toBeNull();
+  });
+});
+
+describe('传送门和开关不是摆设', () => {
+  const maps = [
+    ...allLevels.map(({ id, grid, par, inventory = 0 }) => ({ id, grid, par, inventory })),
+    ...dailyMaps.map(({ grid, par, inventory = 0 }, index) => ({ id: `daily-${index + 1}`, grid, par, inventory })),
+  ];
+  const withElements = maps.filter(({ grid }) => /[Ox]/.test(grid.join('')));
+
+  it('题库里确实有这些元素', () => {
+    expect(withElements.length).toBeGreaterThanOrEqual(24);
+  });
+
+  it.each(withElements)('$id 拆掉之后不能用同样的步数过关', ({ grid, par, inventory }) => {
+    for (const pattern of [/O/g, /x/g]) {
+      if (!pattern.test(grid.join(''))) continue;
+      const found = minimumSteps(parseGrid(grid.map((row) => row.replace(pattern, '#'))), inventory);
+      expect(found === null || found > par).toBe(true);
+    }
   });
 });
 

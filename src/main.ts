@@ -1,4 +1,17 @@
-import { DAILY_ROUTE, dailyPuzzle, localDateKey, shareText } from './daily';
+/// <reference types="vite/client" />
+import { createAnalytics } from './analytics';
+import { ANALYTICS_CODE, PUBLIC_URL } from './config';
+import {
+  challengeRoute,
+  DAILY_ROUTE,
+  dailyPuzzle,
+  dateOfIssue,
+  issueOf,
+  localDateKey,
+  parseDailyRoute,
+  playableIssue,
+  shareText,
+} from './daily';
 import {
   addCoins,
   attemptsToday,
@@ -19,8 +32,10 @@ import {
   loadMeta,
   type Meta,
   noteDailyAttempt,
+  PAST_DAILY_REWARD,
   type Prize,
   recordDaily,
+  recordPastDaily,
   saveMeta,
   SKIN_PRICES,
   spendItem,
@@ -61,6 +76,12 @@ function openStorage(): KeyValueStore | null {
 const storage = openStorage();
 setLocale(loadLocale(storage, navigator.languages ?? []));
 const sound = createSound(storage);
+const analytics = createAnalytics(
+  storage,
+  ANALYTICS_CODE,
+  (url) => { new Image().src = url; },
+  navigator.doNotTrack === '1',
+);
 let progress = loadProgress(storage);
 let meta = expireItems(loadMeta(storage), localDateKey(new Date()));
 saveMeta(storage, meta);
@@ -112,6 +133,12 @@ const drawButton = requireElement<HTMLButtonElement>('#draw');
 const drawStage = requireElement<HTMLElement>('#draw-stage');
 const drawResult = requireElement<HTMLElement>('#draw-result');
 const languageSelect = requireElement<HTMLSelectElement>('#language-select');
+const dailyHistory = requireElement<HTMLButtonElement>('#daily-history');
+const sheetHistory = requireElement<HTMLElement>('#sheet-history');
+const historyGrid = requireElement<HTMLElement>('#history-grid');
+const settingsBox = requireElement<HTMLElement>('#settings');
+const installRow = requireElement<HTMLElement>('#install-row');
+const installButton = requireElement<HTMLButtonElement>('#install');
 const chapterPrev = requireElement<HTMLButtonElement>('#chapter-prev');
 const chapterNext = requireElement<HTMLButtonElement>('#chapter-next');
 
@@ -143,6 +170,8 @@ function applyStaticText(): void {
   setIconButton(sheetCopy, 'copy', text.copyShare);
   setIconButton(dailyCopy, 'copy', text.copyShare);
   setIconButton(sheetClose, 'close', text.close);
+  setIconButton(dailyHistory, 'history', text.historyOpen);
+  requireElement('#install-title').textContent = text.installTitle;
   setIconButton(chapterPrev, 'prev', text.prevChapter);
   setIconButton(chapterNext, 'next', text.nextChapter);
 
@@ -179,13 +208,15 @@ function syncDay(): void {
   if (next !== meta) setMeta(next);
 }
 
-const gameUrl = (): string => `${location.origin}${location.pathname}`;
+/** 单文件版是本地文件，发出去的链接要指向公开网址。 */
+const gameUrl = (): string => (location.protocol === 'file:' ? PUBLIC_URL : `${location.origin}${location.pathname}`);
 
 function shareFor(date: string): string {
   const puzzle = dailyPuzzle(date);
   const result = meta.dailyResults[date];
   if (!result) return '';
-  return shareText({ issue: puzzle.issue, ...result, streak: currentStreak(meta, date), url: gameUrl() });
+  const url = `${gameUrl()}#${challengeRoute(puzzle.issue, result.steps)}`;
+  return shareText({ issue: puzzle.issue, ...result, streak: currentStreak(meta, localDateKey(new Date())), url });
 }
 
 /** 旧办法：很多内嵌网页不给剪贴板权限，但还能用这个。 */
@@ -211,6 +242,7 @@ async function copyShare(text: string, note: HTMLElement, button: HTMLButtonElem
   } catch {
     copied = copyWithSelection(text);
   }
+  if (copied) analytics.track('share-copy');
   note.textContent = copied ? t().copySuccess : t().copyFail;
   if (copied) {
     setIconButton(button, 'check', t().copied);
@@ -362,25 +394,42 @@ function resetGameScreen(daily: boolean): void {
   else startToolTimer();
 }
 
-function showDaily(): void {
-  const { date, issue, level } = dailyPuzzle(localDateKey(new Date()));
+function dailyIntro(level: Level, friendSteps: number | null): string {
+  const text = t();
+  const rows = level.grid.join('');
+  return [
+    friendSteps ? text.challengeIntro(friendSteps) : text.dailyHint(level.inventory ?? 0),
+    rows.includes('O') ? text.dailyPortalNote : '',
+    rows.includes('x') ? text.dailySwitchNote : '',
+  ].filter(Boolean).join(' ');
+}
+
+function showDaily(date: string, friendSteps: number | null): void {
+  const { issue, level } = dailyPuzzle(date);
+  const isToday = date === localDateKey(new Date());
   resetGameScreen(true);
   const text = t();
   levelNumber.textContent = text.dailyHud;
   levelName.textContent = text.issue(issue);
   document.title = `${text.dailyTitle} | ${text.title}`;
+  analytics.track(friendSteps ? 'challenge-start' : isToday ? 'daily-start' : 'past-daily-start');
 
   game = startGame(level, ui, sound, {
-    intro: text.dailyHint(level.inventory ?? 0),
+    intro: dailyIntro(level, friendSteps),
     onFirstMove: () => setMeta(noteDailyAttempt(meta, date)),
     onWin: (stars, steps) => {
       const attempts = Math.max(1, attemptsToday(meta, date));
-      setMeta(recordDaily(meta, date, { steps, par: level.par, stars, attempts }));
+      const result = { steps, par: level.par, stars, attempts };
+      const before = meta.coins;
+      setMeta(isToday ? recordDaily(meta, date, result) : recordPastDaily(meta, date, result));
+      analytics.track(friendSteps ? 'challenge-win' : isToday ? 'daily-win' : 'past-daily-win');
       ui.restart.hidden = true;
+      const earned = meta.coins - before;
+      const versus = friendSteps ? challengeResult(steps, friendSteps) : '';
       openSheetSoon({
         mode: 'daily',
-        title: text.dailyDoneTitle(stars),
-        reward: text.reward(dailyReward(stars)),
+        title: isToday ? text.dailyDoneTitle(stars) : text.pastDoneTitle(stars),
+        reward: [versus, earned > 0 ? text.reward(earned) : ''].filter(Boolean).join(' '),
         share: shareFor(date),
         nextLabel: text.backHome,
         onNext: () => goToSelect(),
@@ -390,6 +439,12 @@ function showDaily(): void {
 
   ui.restart.hidden = false;
   ui.restart.onclick = null;
+}
+
+function challengeResult(mine: number, friend: number): string {
+  const text = t();
+  if (mine < friend) return text.challengeWin(mine, friend);
+  return mine === friend ? text.challengeTie(mine) : text.challengeLose(mine, friend);
 }
 
 function showGame(level: Level): void {
@@ -405,6 +460,7 @@ function showGame(level: Level): void {
   const intro = levelText(level)?.hint;
   game = startGame(level, ui, sound, {
     ...(intro ? { intro } : {}),
+    teach: progress.levels[level.id] === undefined,
     onPreviewShown: () => {
       spend('preview');
       beginCooldown('preview');
@@ -414,6 +470,7 @@ function showGame(level: Level): void {
       progress = recordWin(progress, level.id, stars);
       saveProgress(storage, progress);
       setMeta(addCoins(meta, reward));
+      analytics.track(`level-win-${level.id}`);
       setWon(true);
       if (document.activeElement === canvas) nextButton.focus({ preventScroll: true });
       openSheetSoon({
@@ -431,6 +488,7 @@ function showGame(level: Level): void {
   skipButton.onclick = () => {
     progress = recordSkip(progress, level.id);
     saveProgress(storage, progress);
+    analytics.track(`level-skip-${level.id}`);
     goAfter(level);
   };
 }
@@ -497,6 +555,7 @@ function renderDailyCard(hasProgress: boolean): void {
   share.textContent = shareFor(today);
   dailyCopy.hidden = !result;
   copied.textContent = '';
+  dailyHistory.onclick = openHistory;
   dailyCopy.onclick = () => {
     void copyShare(share.textContent ?? '', copied, dailyCopy, () => { share.hidden = false; });
   };
@@ -531,6 +590,7 @@ drawButton.addEventListener('click', () => {
   syncDay();
   const result = draw(meta, Math.random());
   if (!result) return;
+  analytics.track('draw');
 
   // 先存档再播动画，中途关掉页面也不会丢奖品
   setMeta(result.meta);
@@ -632,8 +692,106 @@ function renderShop(): void {
   renderSkinRow();
 }
 
+function settingRow(iconName: IconName, title: string, on: boolean, onClick: () => void): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'setting-row';
+  const mark = icon(iconName);
+  const label = document.createElement('span');
+  label.textContent = title;
+  const button = shopButton(false, onClick);
+  button.textContent = on ? t().settingOn : t().settingOff;
+  button.classList.toggle('on', on);
+  button.setAttribute('aria-label', `${title}：${button.textContent}`);
+  button.setAttribute('aria-pressed', String(on));
+  row.append(mark, label, button);
+  return row;
+}
+
+function renderSettings(): void {
+  const text = t();
+  const rows = [
+    settingRow('music', text.settingsMusic, sound.isMusicOn(), () => {
+      sound.setMusic(!sound.isMusicOn());
+      renderSettings();
+    }),
+  ];
+  if (analytics.isConfigured()) {
+    rows.push(settingRow('sparkle', text.settingsStats, analytics.isEnabled(), () => {
+      analytics.setEnabled(!analytics.isEnabled());
+      renderSettings();
+    }));
+  }
+  const link = document.createElement('a');
+  link.className = 'privacy-link';
+  link.href = location.protocol === 'file:' ? `${PUBLIC_URL}privacy.html` : 'privacy.html';
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.textContent = text.privacy;
+  settingsBox.replaceChildren(...rows, link);
+}
+
+/** 浏览器给的安装机会，只有安卓 Chrome 这类才有；iPhone 只能手动添加。 */
+let installPrompt: (Event & { prompt(): Promise<void> }) | null = null;
+const isStandalone = (): boolean =>
+  window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const isIos = (): boolean => /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event as Event & { prompt(): Promise<void> };
+});
+
+function renderInstallRow(show: boolean): void {
+  const text = t();
+  const available = !isStandalone() && (installPrompt !== null || isIos());
+  installRow.hidden = !show || !available;
+  requireElement('#install-detail').textContent = installPrompt ? text.installDetail : text.installIos;
+  installButton.hidden = installPrompt === null;
+  setLabelButton(installButton, 'install', text.installAction);
+  installButton.onclick = () => {
+    if (!installPrompt) return;
+    analytics.track('install-prompt');
+    void installPrompt.prompt();
+    installPrompt = null;
+    renderInstallRow(false);
+  };
+}
+
+const HISTORY_DAYS = 30;
+
+function renderHistory(): void {
+  const text = t();
+  const today = issueOf(localDateKey(new Date()));
+  const first = Math.max(1, today - HISTORY_DAYS);
+  const issues: number[] = [];
+  for (let issue = today - 1; issue >= first; issue -= 1) issues.push(issue);
+
+  requireElement('#history-note').textContent = issues.length > 0 ? text.historyNote(PAST_DAILY_REWARD) : text.historyEmpty;
+  historyGrid.replaceChildren(...issues.map((issue) => {
+    const result = meta.dailyResults[dateOfIssue(issue)];
+    const tile = shopButton(Boolean(result), () => {
+      closeSheet();
+      location.hash = `#${DAILY_ROUTE}/${issue}`;
+    });
+    tile.className = result ? 'history-tile done' : 'history-tile';
+    const number = document.createElement('span');
+    number.className = 'history-number';
+    number.textContent = String(issue);
+    const state = document.createElement('span');
+    state.className = 'history-state';
+    state.textContent = result ? `${result.steps}/${result.par}` : text.historyUnplayed;
+    tile.append(number, state);
+    tile.setAttribute('aria-label', result ? text.historyDoneEntry(issue, result.steps, result.par) : text.historyPlay(issue));
+    return tile;
+  }));
+}
+
+function openHistory(): void {
+  openSheet({ mode: 'history', title: t().historyTitle });
+}
+
 type SheetOptions = {
-  mode: 'shop' | 'win' | 'daily';
+  mode: 'shop' | 'win' | 'daily' | 'history';
   title: string;
   reward?: string;
   share?: string;
@@ -654,8 +812,13 @@ function openSheet({ mode, title, reward = '', share = '', nextLabel, onNext }: 
   sheetTitle.textContent = title;
   sheetReward.textContent = reward;
   sheetDaily.hidden = mode !== 'daily';
-  sheetShop.hidden = mode === 'daily';
+  sheetShop.hidden = mode === 'daily' || mode === 'history';
+  sheetHistory.hidden = mode !== 'history';
   skinRow.hidden = mode !== 'shop';
+  settingsBox.hidden = mode !== 'shop';
+  if (mode === 'history') renderHistory();
+  if (mode === 'shop') renderSettings();
+  renderInstallRow(mode === 'daily');
   sheetShare.textContent = share;
   sheetCopied.textContent = '';
   sheetCopy.onclick = () => { void copyShare(share, sheetCopied, sheetCopy); };
@@ -706,6 +869,7 @@ function renderChapter(next: Level | undefined): void {
   requireElement('#chapter-gate').textContent = missing > 0 ? t().chapterGate(missing) : '';
   chapterPrev.disabled = shownChapter === 0;
   chapterNext.disabled = shownChapter === chapters.length - 1;
+  requireElement('#chapter-tiles').classList.toggle('many', chapter.levels.length > 6);
   requireElement('#chapter-tiles').replaceChildren(...chapter.levels.map((level) => levelTile(level, next)));
 }
 
@@ -756,10 +920,26 @@ function showSelect(): void {
   window.scrollTo(0, 0);
 }
 
+function routeDaily(issue: number | null, friendSteps: number | null): void {
+  const today = localDateKey(new Date());
+  const fromFriend = friendSteps !== null;
+  if (fromFriend) analytics.track('challenge-open');
+  const date = issue !== null && playableIssue(issue, today, fromFriend) ? dateOfIssue(issue) : today;
+  const result = meta.dailyResults[date];
+  if (result) {
+    // 已经做过：不能重做，但朋友发来的链接要告诉他比赛结果
+    selectNote = friendSteps ? challengeResult(result.steps, friendSteps) : '';
+    showSelect();
+    return;
+  }
+  showDaily(date, friendSteps);
+}
+
 function route(): void {
   const id = location.hash.slice(1);
-  if (id === DAILY_ROUTE && !meta.dailyResults[localDateKey(new Date())]) {
-    showDaily();
+  const dailyRoute = parseDailyRoute(id);
+  if (dailyRoute) {
+    routeDaily(dailyRoute.issue, dailyRoute.friendSteps);
     return;
   }
   const level = allLevels.find((candidate) => candidate.id === id);
@@ -805,4 +985,15 @@ languageSelect.addEventListener('change', () => {
 applyStaticText();
 refreshMuteButtons();
 refreshCoins();
+analytics.visit(localDateKey(new Date()));
+window.addEventListener('pointerdown', () => sound.resumeMusic(), { once: true });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) sound.pauseMusic();
+  else sound.resumeMusic();
+});
+if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {
+    // 有些托管环境不允许，游戏照常玩
+  });
+}
 route();
