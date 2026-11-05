@@ -88,7 +88,11 @@ function restingAngle(grid: Grid, { x, y }: Position): number {
 
 /** 这关第一次玩时要标出来的格子。 */
 function teachCell(level: Level, grid: Grid, inventory: number): Position | null {
-  if (level.teach === 'tap') return solve(grid, inventory)?.[0] ?? null;
+  if (level.teach === 'tap') {
+    // 解法里有放镜子时先指空地，和这一关“点击空地”的说明一致
+    const steps = solve(grid, inventory) ?? [];
+    return steps.find(({ x, y }) => grid[y]?.[x]?.kind === 'empty') ?? steps[0] ?? null;
+  }
   const wanted = (x: number, y: number): boolean => {
     const cell = grid[y]?.[x];
     if (level.teach === 'filter') return cell?.kind === 'filter';

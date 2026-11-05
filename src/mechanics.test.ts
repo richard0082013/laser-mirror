@@ -23,9 +23,18 @@ describe('按机制显示的说明', () => {
     expect(mechanicHint({ grid: ['>.'], inventory: 2 })).toBe(mechanics.place(2));
   });
 
-  it('机制很多时最多两句', () => {
+  it('机制很多时只说最新的一句', () => {
     const { mechanics } = t();
-    expect(mechanicHint({ grid: ['>xOsrR'], inventory: 1 })).toBe(`${mechanics.door} ${mechanics.portal}`);
+    expect(mechanicHint({ grid: ['>xOsrR'], inventory: 1 })).toBe(mechanics.door);
+  });
+
+  it('每一关都有自己的说明，不会落到通用提示', () => {
+    for (const locale of ['zh', 'en'] as const) {
+      setLocale(locale);
+      for (const level of allLevels) {
+        expect(t().levels[level.id]?.hint ?? mechanicHint(level), `${locale} ${level.id}`).toBeTruthy();
+      }
+    }
   });
 
   it('含机制的关卡都有说明', () => {

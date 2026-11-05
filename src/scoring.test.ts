@@ -119,6 +119,18 @@ describe('传送门和开关不是摆设', () => {
   });
 });
 
+describe('第一次教放镜子的关卡', () => {
+  it('放下去的方向就是对的，不用再点一次', () => {
+    const level = allLevels.find(({ id }) => id === 'bring-a-mirror');
+    if (!level) throw new Error('缺少 bring-a-mirror');
+    const grid = parseGrid(level.grid);
+    const steps = solve(grid, level.inventory ?? 0) ?? [];
+    const placed = steps.filter(({ x, y }) => grid[y]?.[x]?.kind === 'empty');
+    expect(placed).toHaveLength(1);
+    expect(new Set(steps.map(({ x, y }) => `${x},${y}`)).size).toBe(steps.length);
+  });
+});
+
 describe('用过提示', () => {
   it('最多 2 星，步数多了照常降星', () => {
     expect(starsFor(3, 3, true)).toBe(2);
