@@ -283,8 +283,13 @@ function goToSelect(note = ''): void {
     return;
   }
   // 直接写 location.hash = '' 会在网址末尾留一个 #
-  history.pushState(null, '', `${location.pathname}${location.search}`);
-  route();
+  try {
+    history.pushState(null, '', `${location.pathname}${location.search}`);
+    route();
+  } catch {
+    // 沙箱页面可能不允许改网址，退回到普通做法
+    location.hash = '';
+  }
 }
 
 /** 去下一关；下一章星数不够时回选关页，并说明还差多少。 */
