@@ -92,6 +92,15 @@ export type Messages = {
   itemCard: (name: string, stock: number, price: number) => string;
   cooldownEntry: (name: string, seconds: number) => string;
   itemRules: (cooldowns: string) => string;
+  shopNote: string;
+  rulesTitle: string;
+  oddsTitle: string;
+  assistWarnTitle: string;
+  assistWarnBody: string;
+  assistContinue: string;
+  leaveTitle: string;
+  leaveBody: string;
+  leaveAction: string;
 
   drawTitle: string;
   drawPrice: (price: number) => string;

@@ -65,10 +65,12 @@
         <button class="coin-pill" type="button"></button>
         <button class="mute icon-button" type="button"></button>
       </header>
+      <div id="board-frame">
       <canvas
         id="board"
         tabindex="0"
       ></canvas>
+      </div>
       <div id="score">
         <span id="step-count"></span>
         <span id="par-note"></span>
@@ -97,6 +99,7 @@
           <button id="sheet-close" class="icon-button" type="button"></button>
         </header>
         <p id="sheet-reward"></p>
+        <p id="sheet-text"></p>
         <div id="sheet-daily" hidden>
           <pre id="sheet-share"></pre>
           <div class="sheet-copy">
@@ -110,12 +113,19 @@
         </div>
         <div id="sheet-shop">
           <div id="item-table"></div>
-          <p class="shop-note" id="item-rules"></p>
+          <p class="shop-note" id="shop-note"></p>
+          <details class="fold">
+            <summary id="rules-title"></summary>
+            <p class="shop-note" id="item-rules"></p>
+          </details>
           <div id="draw-box">
             <div id="draw-stage" aria-hidden="true"></div>
             <div class="draw-text">
               <h3 id="draw-title"></h3>
-              <p id="draw-odds"></p>
+              <details class="fold">
+                <summary id="odds-title"></summary>
+                <p id="draw-odds"></p>
+              </details>
             </div>
             <button id="draw" type="button"></button>
           </div>

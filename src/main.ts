@@ -99,6 +99,7 @@ const canvas = requireElement<HTMLCanvasElement>('#board');
 
 const ui: GameUi = {
   screen: gameScreen,
+  frame: requireElement('#board-frame'),
   canvas,
   status: requireElement('#status'),
   pips: requireElement('#pips'),
@@ -121,6 +122,7 @@ const sheetTitle = requireElement<HTMLElement>('#sheet-title');
 const sheetCoins = requireElement<HTMLElement>('#sheet-coins');
 const sheetClose = requireElement<HTMLButtonElement>('#sheet-close');
 const sheetReward = requireElement<HTMLElement>('#sheet-reward');
+const sheetText = requireElement<HTMLElement>('#sheet-text');
 const sheetDaily = requireElement<HTMLElement>('#sheet-daily');
 const sheetShare = requireElement<HTMLElement>('#sheet-share');
 const sheetCopy = requireElement<HTMLButtonElement>('#sheet-copy');
@@ -172,6 +174,9 @@ function applyStaticText(): void {
   setIconButton(sheetClose, 'close', text.close);
   setIconButton(dailyHistory, 'history', text.historyOpen);
   requireElement('#install-title').textContent = text.installTitle;
+  requireElement('#shop-note').textContent = text.shopNote;
+  requireElement('#rules-title').textContent = text.rulesTitle;
+  requireElement('#odds-title').textContent = text.oddsTitle;
   setIconButton(chapterPrev, 'prev', text.prevChapter);
   setIconButton(chapterNext, 'next', text.nextChapter);
 
@@ -283,9 +288,13 @@ function goAfter(level: Level): void {
 
 let isDailyGame = false;
 let freeHintLeft = false;
+let levelWon = false;
+let currentLevelId = '';
 
 function setWon(won: boolean): void {
-  nextButton.hidden = isDailyGame || !won;
+  levelWon = won;
+  // 面板弹出之前不显示“下一关”：按钮按到一半被面板盖住，这一下就白点了
+  nextButton.hidden = isDailyGame || !won || sheetPending;
   skipButton.hidden = isDailyGame || won;
   toolsRow.hidden = isDailyGame || won;
 }
@@ -297,16 +306,16 @@ function toolBadge(item: ItemId): { badge: HTMLElement; label: string } {
   badge.className = 'badge';
   const text = t();
   const name = text.itemNames[item];
+  if (item === 'hint' && freeHintLeft) {
+    badge.textContent = text.itemFree;
+    badge.classList.add('free');
+    return { badge, label: text.itemFreeLabel(name) };
+  }
   const seconds = secondsLeft(item);
   if (seconds > 0) {
     badge.textContent = `${seconds}s`;
     badge.classList.add('cooling');
     return { badge, label: text.itemCooling(name, seconds) };
-  }
-  if (item === 'hint' && freeHintLeft) {
-    badge.textContent = text.itemFree;
-    badge.classList.add('free');
-    return { badge, label: text.itemFreeLabel(name) };
   }
   const stock = meta.items[item];
   if (stock > 0) {
@@ -317,8 +326,10 @@ function toolBadge(item: ItemId): { badge: HTMLElement; label: string } {
   return { badge, label: text.itemPay(name, ITEM_PRICES[item]) };
 }
 
-const canAfford = (item: ItemId): boolean => canUseItem(meta, item) || (item === 'hint' && freeHintLeft);
-const isReady = (item: ItemId): boolean => cooldownLeft(meta, item, Date.now()) === 0 && canAfford(item);
+/** 每关的免费提示不受上一关的冷却影响。 */
+const isFree = (item: ItemId): boolean => item === 'hint' && freeHintLeft;
+const isCooling = (item: ItemId): boolean => !isFree(item) && cooldownLeft(meta, item, Date.now()) > 0;
+const isReady = (item: ItemId): boolean => !isCooling(item) && (isFree(item) || canUseItem(meta, item));
 
 const TOOL_BUTTONS: Record<ItemId, HTMLButtonElement> = { hint: hintButton, preview: previewButton, undo: undoButton };
 
@@ -328,7 +339,7 @@ function refreshTools(): void {
     const { badge, label } = toolBadge(item);
     setIconButton(button, ITEM_ICONS[item], label, badge);
     button.disabled = !isReady(item);
-    button.classList.toggle('cooling', secondsLeft(item) > 0);
+    button.classList.toggle('cooling', isCooling(item));
   }
 }
 
@@ -338,13 +349,13 @@ let lastToolState = '';
 
 function tickTools(): void {
   syncDay();
-  const state = `${ITEM_IDS.map(secondsLeft).join()}|${ITEM_IDS.map((item) => meta.items[item]).join()}`;
+  const state = `${ITEM_IDS.map(secondsLeft).join()}|${ITEM_IDS.map((item) => meta.items[item]).join()}|${freeHintLeft}`;
   if (state !== lastToolState) {
     lastToolState = state;
     refreshTools();
   }
   for (const item of ITEM_IDS) {
-    const share = cooldownLeft(meta, item, Date.now()) / ITEM_COOLDOWNS_MS[item];
+    const share = isCooling(item) ? cooldownLeft(meta, item, Date.now()) / ITEM_COOLDOWNS_MS[item] : 0;
     TOOL_BUTTONS[item].style.setProperty('--cooldown', `${share * 360}deg`);
   }
 }
@@ -367,14 +378,40 @@ function beginCooldown(item: ItemId): void {
   tickTools();
 }
 
+/** 第一次用提示或预判时先说清楚代价，确认后才用。 */
+function afterAssistWarning(use: () => void): void {
+  if (meta.assistWarned) {
+    use();
+    return;
+  }
+  const text = t();
+  openSheet({
+    mode: 'confirm',
+    title: text.assistWarnTitle,
+    text: text.assistWarnBody,
+    nextLabel: text.assistContinue,
+    onNext: () => {
+      setMeta({ ...meta, assistWarned: true });
+      use();
+    },
+  });
+}
+
 hintButton.addEventListener('click', () => {
-  if (!isReady('hint') || !game?.showHint()) return;
-  if (freeHintLeft) freeHintLeft = false;
-  else spend('hint');
-  beginCooldown('hint');
+  if (!isReady('hint')) return;
+  afterAssistWarning(() => {
+    if (!game?.showHint()) return;
+    if (freeHintLeft) {
+      freeHintLeft = false;
+      setMeta({ ...meta, freeHintsUsed: [...meta.freeHintsUsed, currentLevelId] });
+    } else {
+      spend('hint');
+    }
+    beginCooldown('hint');
+  });
 });
 previewButton.addEventListener('click', () => {
-  if (isReady('preview')) game?.armPreview();
+  if (isReady('preview')) afterAssistWarning(() => game?.armPreview());
 });
 undoButton.addEventListener('click', () => {
   if (!isReady('undo') || !game?.undo()) return;
@@ -382,12 +419,12 @@ undoButton.addEventListener('click', () => {
   beginCooldown('undo');
 });
 
-function resetGameScreen(daily: boolean): void {
+function resetGameScreen(daily: boolean, freeHint = false): void {
   selectScreen.hidden = true;
   gameScreen.hidden = false;
   game?.stop();
   isDailyGame = daily;
-  freeHintLeft = !daily;
+  freeHintLeft = freeHint;
   closeSheet();
   setWon(false);
   if (daily) window.clearInterval(toolTimer);
@@ -448,7 +485,8 @@ function challengeResult(mine: number, friend: number): string {
 }
 
 function showGame(level: Level): void {
-  resetGameScreen(false);
+  currentLevelId = level.id;
+  resetGameScreen(false, !meta.freeHintsUsed.includes(level.id));
   ui.restart.hidden = false;
 
   const text = t();
@@ -472,7 +510,6 @@ function showGame(level: Level): void {
       setMeta(addCoins(meta, reward));
       analytics.track(`level-win-${level.id}`);
       setWon(true);
-      if (document.activeElement === canvas) nextButton.focus({ preventScroll: true });
       openSheetSoon({
         mode: 'win',
         title: text.winTitle(stars),
@@ -791,28 +828,42 @@ function openHistory(): void {
 }
 
 type SheetOptions = {
-  mode: 'shop' | 'win' | 'daily' | 'history';
+  mode: 'shop' | 'win' | 'daily' | 'history' | 'confirm';
   title: string;
   reward?: string;
+  text?: string;
   share?: string;
   nextLabel?: string;
   onNext?: () => void;
 };
 
 let sheetTimer = 0;
+let sheetOpenedAt = 0;
+/** 过关后等待面板弹出的这段时间。 */
+let sheetPending = false;
+let cancelEarlyClick: () => void = () => {};
+
+function clearPendingSheet(): void {
+  window.clearTimeout(sheetTimer);
+  cancelEarlyClick();
+  cancelEarlyClick = () => {};
+  sheetPending = false;
+}
 
 function closeSheet(): void {
-  window.clearTimeout(sheetTimer);
+  clearPendingSheet();
   if (sheet.open) sheet.close();
 }
 
-function openSheet({ mode, title, reward = '', share = '', nextLabel, onNext }: SheetOptions): void {
-  window.clearTimeout(sheetTimer);
+function openSheet({ mode, title, reward = '', text = '', share = '', nextLabel, onNext }: SheetOptions): void {
+  clearPendingSheet();
   syncDay();
   sheetTitle.textContent = title;
   sheetReward.textContent = reward;
+  sheetText.textContent = text;
+  sheetText.hidden = text === '';
   sheetDaily.hidden = mode !== 'daily';
-  sheetShop.hidden = mode === 'daily' || mode === 'history';
+  sheetShop.hidden = mode === 'daily' || mode === 'history' || mode === 'confirm';
   sheetHistory.hidden = mode !== 'history';
   skinRow.hidden = mode !== 'shop';
   settingsBox.hidden = mode !== 'shop';
@@ -836,22 +887,37 @@ function openSheet({ mode, title, reward = '', share = '', nextLabel, onNext }: 
       onNext();
     };
   }
-  if (!sheet.open) sheet.showModal();
+  if (!sheet.open) {
+    sheet.showModal();
+    sheetOpenedAt = performance.now();
+  }
   if (onNext) sheetNext.focus({ preventScroll: true });
 }
 
+/** 过关后先留一点时间看光效；等不及的玩家点一下屏幕就马上弹出，这一下不会误触别的按钮。 */
 function openSheetSoon(options: SheetOptions): void {
-  window.clearTimeout(sheetTimer);
+  clearPendingSheet();
+  sheetPending = true;
+  setWon(levelWon);
+  const openNow = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    openSheet(options);
+  };
+  window.addEventListener('click', openNow, { capture: true });
+  cancelEarlyClick = () => window.removeEventListener('click', openNow, { capture: true });
   sheetTimer = window.setTimeout(() => openSheet(options), SHEET_DELAY_MS);
 }
 
 sheetClose.addEventListener('click', closeSheet);
-// 点面板外面的暗处也能关
+// 点面板外面的暗处也能关；刚弹出时的点击多半是本来想点别的，不算
+const BACKDROP_GRACE_MS = 500;
 sheet.addEventListener('click', (event) => {
-  if (event.target === sheet) closeSheet();
+  if (event.target === sheet && performance.now() - sheetOpenedAt > BACKDROP_GRACE_MS) closeSheet();
 });
 // 关掉商店回到关卡时，库存和价格可能变了
 sheet.addEventListener('close', () => {
+  setWon(levelWon);
   lastToolState = '';
   if (!gameScreen.hidden && !isDailyGame) tickTools();
 });
@@ -962,7 +1028,20 @@ muteButtons.forEach((button) => {
   });
 });
 
-backButton.addEventListener('click', () => goToSelect());
+backButton.addEventListener('click', () => {
+  if (!game?.hasUnsavedSteps()) {
+    goToSelect();
+    return;
+  }
+  const text = t();
+  openSheet({
+    mode: 'confirm',
+    title: text.leaveTitle,
+    text: text.leaveBody,
+    nextLabel: text.leaveAction,
+    onNext: () => goToSelect(),
+  });
+});
 window.addEventListener('hashchange', route);
 languageSelect.replaceChildren(...LOCALES.map(({ id, label }) => {
   const option = document.createElement('option');

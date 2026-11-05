@@ -25,9 +25,13 @@ const EMITTER_CHARGE_DELAY = 0.45; // 秒
 const MIRROR_TURN_RATE = 16;
 const MAX_PARTICLES = 400;
 const STAR_COUNT = 3;
+/** 现有地图里最高的宽高比（9×8 去掉外圈），外框按它留够高度。 */
+const TALLEST_BOARD = 7.76 / 6.76;
 
 export type GameUi = {
   screen: HTMLElement;
+  /** 棋盘外框。大小只看屏幕，不看地图，切关时画面不会跳。 */
+  frame: HTMLElement;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
   pips: HTMLElement;
@@ -57,6 +61,8 @@ export type Game = {
   showHint(): boolean;
   armPreview(): boolean;
   undo(): boolean;
+  /** 这一关走过步、还没过关：退出前要确认。 */
+  hasUnsavedSteps(): boolean;
 };
 
 const center = ({ x, y }: Position): Position => ({ x: x + 0.5, y: y + 0.5 });
@@ -567,10 +573,15 @@ export function startGame(
   ui.restart.addEventListener('click', reset, { signal });
 
   function fitToScreen(): void {
-    const others = ui.screen.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
-    const availableWidth = Math.min(ui.screen.clientWidth, 760);
-    const availableHeight = Math.max(window.innerHeight - others - 32, 200);
-    const cssWidth = Math.floor(Math.min(availableWidth, availableHeight * renderer.aspectRatio));
+    // 整页撑满屏幕，所以不能用整页减棋盘，要把其他几块的高度加起来
+    const rows = Array.from(ui.screen.children).filter((child) => child !== ui.frame && !child.hasAttribute('hidden'));
+    const gap = parseFloat(getComputedStyle(ui.screen).rowGap) || 0;
+    const others = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0) + gap * rows.length;
+    const frameWidth = Math.min(ui.screen.clientWidth, 760);
+    const frameHeight = Math.min(Math.max(window.innerHeight - others - 32, 200), Math.round(frameWidth / TALLEST_BOARD));
+    ui.frame.style.width = `${frameWidth}px`;
+    ui.frame.style.height = `${frameHeight}px`;
+    const cssWidth = Math.floor(Math.min(frameWidth, frameHeight * renderer.aspectRatio));
     canvas.style.width = `${cssWidth}px`;
     canvas.style.height = `${Math.round(cssWidth / renderer.aspectRatio)}px`;
     renderer.resize(cssWidth, pixelRatio);
@@ -591,5 +602,6 @@ export function startGame(
     showHint,
     armPreview,
     undo,
+    hasUnsavedSteps: () => steps > 0 && !solved,
   };
 }

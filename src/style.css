@@ -263,8 +263,10 @@ h2 {
 
 /* 关卡页 */
 
+/* 撑满屏幕：顶部和棋盘贴上面，按钮贴下面，切关时都不动 */
 #game-screen {
   width: 100%;
+  min-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -375,6 +377,13 @@ h2 {
   gap: 4px;
 }
 
+/* 外框大小只看屏幕，棋盘在里面居中，切关时不跳 */
+#board-frame {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
 #status {
   margin: 0;
   min-height: 2.8rem;
@@ -392,6 +401,7 @@ h2 {
 }
 
 #footer {
+  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -610,7 +620,6 @@ h2 {
   background: #9df7ff;
 }
 
-#back,
 #hud .mute,
 .chapter-pager .icon-button,
 #sheet-close {
@@ -952,8 +961,7 @@ h2 {
 }
 
 #draw-box {
-  border: 1px solid rgba(255, 228, 107, 0.45);
-  background: rgba(255, 228, 107, 0.07);
+  border: 1px solid rgba(170, 176, 220, 0.28);
 }
 
 #skin-row {
@@ -971,8 +979,8 @@ h2 {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(255, 228, 107, 0.16);
-  color: var(--star);
+  background: rgba(170, 176, 220, 0.12);
+  color: var(--muted);
 }
 
 #draw-stage .coin {
@@ -998,20 +1006,39 @@ h2 {
   line-height: 1.4;
 }
 
+/* 抽奖不抢眼：和其他次要按钮一样，主按钮永远是“下一关” */
 #draw {
   flex-shrink: 0;
   min-height: 44px;
   padding: 8px 14px;
-  border: 1px solid var(--star);
+  border: 1px solid rgba(170, 176, 220, 0.55);
   border-radius: 6px;
-  background: var(--star);
-  color: #2a2008;
+  background: rgba(255, 255, 255, 0.04);
   font-size: 0.9375rem;
-  font-weight: 600;
 }
 
 #draw:hover:not(:disabled) {
-  background: #fff0a6;
+  border-color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fold summary {
+  width: fit-content;
+  min-height: 24px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+#sheet-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+#sheet-text[hidden] {
+  display: none;
 }
 
 #draw:disabled,
@@ -1034,10 +1061,21 @@ html[lang='en'] .game-title {
   letter-spacing: 0.01em;
 }
 
-/* 窄屏：标题让位给按钮 */
+/* 窄屏：标题让位给按钮；文字区按最长的说明留够高度，行数不同也不会把下面顶走 */
 @media (max-width: 440px) {
   #level-name {
     display: none;
+  }
+
+  #score {
+    min-height: 3.1rem;
+    align-content: flex-start;
+  }
+
+  #status {
+    min-height: 4.3rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
   }
 }
 

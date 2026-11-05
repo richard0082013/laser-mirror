@@ -296,3 +296,23 @@ describe('补做往期题', () => {
     expect(recordPastDaily(once, '2026-11-08', result)).toBe(once);
   });
 });
+
+describe('限星提醒', () => {
+  it('默认没提醒过，存档后记得住，坏值当没提醒过', () => {
+    expect(newMeta().assistWarned).toBe(false);
+    const store = memoryStore();
+    saveMeta(store, { ...newMeta(), assistWarned: true });
+    expect(loadMeta(store).assistWarned).toBe(true);
+    expect(loadMeta(memoryStore(JSON.stringify({ assistWarned: 'yes' }))).assistWarned).toBe(false);
+  });
+});
+
+describe('免费提示记录', () => {
+  it('存档后记得住，坏值被丢掉', () => {
+    const store = memoryStore();
+    saveMeta(store, { ...newMeta(), freeHintsUsed: ['first-light'] });
+    expect(loadMeta(store).freeHintsUsed).toEqual(['first-light']);
+    expect(loadMeta(memoryStore(JSON.stringify({ freeHintsUsed: ['a', 3, null] }))).freeHintsUsed).toEqual(['a']);
+    expect(loadMeta(memoryStore(JSON.stringify({ freeHintsUsed: 'a' }))).freeHintsUsed).toEqual([]);
+  });
+});

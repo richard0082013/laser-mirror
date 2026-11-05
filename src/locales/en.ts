@@ -74,7 +74,7 @@ export const en: Messages = {
   installIos: 'In Safari, tap Share, then Add to Home Screen.',
 
   start: 'Start',
-  resumeLevel: (level) => `Level ${level}`,
+  resumeLevel: (level) => `Resume level ${level}`,
   levelNumber: (level) => `Level ${level}`,
   chapterTitle: (chapter, name) => `Chapter ${chapter}: ${name}`,
   chapterGate: (missing) => `${stars(missing)} to unlock`,
@@ -96,7 +96,16 @@ export const en: Messages = {
   itemPay: (name, price) => `${name}, ${count(price, 'coin')} per use`,
   itemCard: (name, stock, price) => `${name}, you have ${stock}, buy one for ${count(price, 'coin')}`,
   cooldownEntry: (name, seconds) => `${name} ${seconds}s`,
-  itemRules: (cooldowns) => `Items expire at the end of the day. Cooldown after use: ${cooldowns}. Hint and Preview limit that level to 2 stars.`,
+  itemRules: (cooldowns) => `Cooldown after use: ${cooldowns}. Hint and Preview limit that level to 2 stars.`,
+  shopNote: 'Items expire at the end of the day.',
+  rulesTitle: 'Item rules',
+  oddsTitle: 'See the odds',
+  assistWarnTitle: '2 stars at most on this level',
+  assistWarnBody: 'Hint and Preview help you clear the level, but you cannot earn 3 stars on it. This reminder only shows once.',
+  assistContinue: 'Use it',
+  leaveTitle: 'Leave this level?',
+  leaveBody: 'Your steps on this level will not be kept.',
+  leaveAction: 'Leave',
 
   drawTitle: 'Lucky draw',
   drawPrice: (price) => `Draw once for ${count(price, 'coin')}`,
@@ -136,7 +145,7 @@ export const en: Messages = {
 
   chapterNames: ['Mirrors', 'Placing', 'Splitting', 'Colors', 'Portals', 'Switches', 'Mixed'],
   levels: {
-    'first-light': { name: 'First light', hint: 'Tap a mirror to turn it and guide the laser to the crystal.' },
+    'first-light': { name: 'First light', hint: 'Tap a mirror to turn it 90° and guide the light to the crystal. Every tap is a step. Fewer steps, more stars.' },
     'two-targets': { name: 'Two crystals', hint: 'A beam passes through a crystal and can light the next one.' },
     'back-door': { name: 'Back door', hint: 'Plan your route for full stars. Mirrors off the beam count as steps too.' },
     detour: { name: 'Detour' },

@@ -70,7 +70,7 @@ export const zh: Messages = {
   installIos: '在 Safari 里点“分享”，再选“添加到主屏幕”。',
 
   start: '开始',
-  resumeLevel: (level) => `第 ${level} 关`,
+  resumeLevel: (level) => `继续第 ${level} 关`,
   levelNumber: (level) => `第 ${level} 关`,
   chapterTitle: (chapter, name) => `第 ${chapter} 章：${name}`,
   chapterGate: (missing) => `还差 ${missing} 星解锁`,
@@ -92,7 +92,16 @@ export const zh: Messages = {
   itemPay: (name, price) => `${name}，${price} 币用一次`,
   itemCard: (name, stock, price) => `${name}，有 ${stock} 个，花 ${price} 币买一个`,
   cooldownEntry: (name, seconds) => `${name} ${seconds} 秒`,
-  itemRules: (cooldowns) => `道具当天有效，明天清零。用后冷却：${cooldowns}。提示和预判用后这关最多 2 星。`,
+  itemRules: (cooldowns) => `用后冷却：${cooldowns}。提示和预判用后，这关最多 2 星。`,
+  shopNote: '道具当天有效，明天清零。',
+  rulesTitle: '道具规则',
+  oddsTitle: '查看概率',
+  assistWarnTitle: '用了这关最多 2 星',
+  assistWarnBody: '提示和预判能帮你过关，但这关就拿不到 3 星了。这个提醒只出现一次。',
+  assistContinue: '继续使用',
+  leaveTitle: '退出这一关？',
+  leaveBody: '这一关走过的步数不会保留。',
+  leaveAction: '退出',
 
   drawTitle: '幸运抽奖',
   drawPrice: (price) => `花 ${price} 币抽一次`,
@@ -132,7 +141,7 @@ export const zh: Messages = {
 
   chapterNames: ['镜子', '摆放', '分光', '颜色', '传送门', '开关', '综合'],
   levels: {
-    'first-light': { name: '第一束光', hint: '点击镜子转向，把激光引到水晶上。' },
+    'first-light': { name: '第一束光', hint: '点一下镜子转 90°，把光引到水晶上。每点一下都算一步，步数越少星越多。' },
     'two-targets': { name: '两颗水晶', hint: '一束光可以穿过水晶，继续照亮下一颗。' },
     'back-door': { name: '绕到背后', hint: '想拿满星，动手前先看好路线。光路外的镜子也算步数。' },
     detour: { name: '弯路' },

@@ -13,6 +13,10 @@ export type Meta = {
   itemsDate: string | null;
   /** 每种道具冷却结束的时间（毫秒时间戳）。存进存档，重开关卡或刷新页面都不能跳过。 */
   cooldowns: Record<ItemId, number>;
+  /** 提醒过“用提示或预判最多 2 星”了吗。只提醒一次。 */
+  assistWarned: boolean;
+  /** 用过免费提示的关卡。写进存档，刷新或重进都不会再给，否则提示等于无限用。 */
+  freeHintsUsed: string[];
   ownedSkins: SkinId[];
   skin: SkinId;
   streak: number;
@@ -34,6 +38,8 @@ export function newMeta(): Meta {
     items: { hint: 1, preview: 1, undo: 1 },
     itemsDate: null,
     cooldowns: { hint: 0, preview: 0, undo: 0 },
+    assistWarned: false,
+    freeHintsUsed: [],
     ownedSkins: ['default'],
     skin: 'default',
     streak: 0,
@@ -90,6 +96,10 @@ export function loadMeta(store: KeyValueStore | null): Meta {
         preview: isCount(cooldowns.preview) ? cooldowns.preview : 0,
         undo: isCount(cooldowns.undo) ? cooldowns.undo : 0,
       },
+      assistWarned: saved.assistWarned === true,
+      freeHintsUsed: Array.isArray(saved.freeHintsUsed)
+        ? saved.freeHintsUsed.filter((id): id is string => typeof id === 'string')
+        : [],
       ownedSkins,
       skin: isSkin(saved.skin) && ownedSkins.includes(saved.skin) ? saved.skin : 'default',
       streak: isCount(saved.streak) ? saved.streak : 0,
